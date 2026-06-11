@@ -2,6 +2,7 @@ package com.urban_shop.backend.tenant.service;
 
 import com.urban_shop.backend.tenant.dto.request.CreateTenantRequest;
 import com.urban_shop.backend.tenant.dto.request.UpdateBusinessInfoRequest;
+import com.urban_shop.backend.tenant.dto.request.UpdateTenantRequest;
 import com.urban_shop.backend.tenant.dto.request.UpdateTenantSettingsRequest;
 import com.urban_shop.backend.tenant.dto.response.StoreInfoResponse;
 import com.urban_shop.backend.tenant.dto.response.TenantBusinessInfoResponse;
@@ -19,6 +20,8 @@ public interface TenantService {
     List<TenantResponse> list();
 
     TenantDetailResponse getById(UUID tenantId);
+
+    TenantResponse update(UUID tenantId, UpdateTenantRequest request);
 
     TenantResponse suspend(UUID tenantId);
 

@@ -1,6 +1,7 @@
 package com.urban_shop.backend.tenant.controller;
 
 import com.urban_shop.backend.tenant.dto.request.CreateTenantRequest;
+import com.urban_shop.backend.tenant.dto.request.UpdateTenantRequest;
 import com.urban_shop.backend.tenant.dto.response.TenantDetailResponse;
 import com.urban_shop.backend.tenant.dto.response.TenantResponse;
 import com.urban_shop.backend.tenant.service.TenantService;
@@ -40,6 +41,11 @@ public class SuperAdminTenantController {
     @GetMapping("/{id}")
     public TenantDetailResponse getById(@PathVariable UUID id) {
         return tenantService.getById(id);
+    }
+
+    @PutMapping("/{id}")
+    public TenantResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateTenantRequest request) {
+        return tenantService.update(id, request);
     }
 
     @PutMapping("/{id}/suspend")

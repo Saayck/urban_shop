@@ -5,7 +5,9 @@ import com.urban_shop.backend.common.exception.ResourceNotFoundException;
 import com.urban_shop.backend.tenant.dto.request.BusinessInfoRequest;
 import com.urban_shop.backend.tenant.dto.request.CreateTenantRequest;
 import com.urban_shop.backend.tenant.dto.request.UpdateBusinessInfoRequest;
+import com.urban_shop.backend.tenant.dto.request.UpdateTenantRequest;
 import com.urban_shop.backend.tenant.dto.request.UpdateTenantSettingsRequest;
+import com.urban_shop.backend.tenant.dto.response.StoreBusinessInfoResponse;
 import com.urban_shop.backend.tenant.dto.response.StoreInfoResponse;
 import com.urban_shop.backend.tenant.dto.response.TenantBusinessInfoResponse;
 import com.urban_shop.backend.tenant.dto.response.TenantDetailResponse;
@@ -29,6 +31,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -37,6 +41,7 @@ import java.util.UUID;
 public class TenantServiceImpl implements TenantService {
 
     private static final Set<String> PUBLIC_STATUSES = Set.of("ACTIVE", "TRIAL");
+    private static final Set<String> SUPPORTED_BUSINESS_TYPES = Set.of("EMPRESA", "PERSONA_NATURAL");
 
     private final TenantRepository tenantRepository;
     private final TenantBusinessInfoRepository businessInfoRepository;
@@ -49,8 +54,9 @@ public class TenantServiceImpl implements TenantService {
     @Override
     @Transactional
     public TenantDetailResponse create(CreateTenantRequest request) {
-        if (tenantRepository.existsBySlug(request.slug())) {
-            throw new BusinessException("Slug ya esta tomado: " + request.slug());
+        String slug = normalizeSlug(request.slug());
+        if (tenantRepository.existsBySlug(slug)) {
+            throw new BusinessException("Slug ya esta tomado: " + slug);
         }
         validateBusinessRule(request.businessInfo().businessType(), request.businessInfo().ruc());
         if (userRepository.existsByEmailIgnoreCase(request.initialAdmin().email())) {
@@ -58,9 +64,9 @@ public class TenantServiceImpl implements TenantService {
         }
 
         Tenant tenant = new Tenant();
-        tenant.setName(request.name());
-        tenant.setSlug(request.slug());
-        tenant.setPlanName(request.planName());
+        tenant.setName(normalizeRequired(request.name()));
+        tenant.setSlug(slug);
+        tenant.setPlanName(normalizeUpper(request.planName()));
         tenant.setStatus("ACTIVE");
         tenant = tenantRepository.save(tenant);
 
@@ -79,10 +85,10 @@ public class TenantServiceImpl implements TenantService {
 
         User admin = new User();
         admin.setTenantId(tenant.getId());
-        admin.setFullName(request.initialAdmin().fullName());
+        admin.setFullName(normalizeRequired(request.initialAdmin().fullName()));
         admin.setEmail(request.initialAdmin().email().trim().toLowerCase());
         admin.setPasswordHash(passwordEncoder.encode(request.initialAdmin().password()));
-        admin.setPhone(request.initialAdmin().phone());
+        admin.setPhone(normalizeNullable(request.initialAdmin().phone()));
         admin.setActive(true);
         admin.getRoles().add(tenantAdminRole);
         userRepository.save(admin);
@@ -93,7 +99,7 @@ public class TenantServiceImpl implements TenantService {
     @Override
     @Transactional(readOnly = true)
     public List<TenantResponse> list() {
-        return tenantRepository.findAll().stream().map(this::toResponse).toList();
+        return tenantRepository.findAllByOrderByCreatedAtDesc().stream().map(this::toResponse).toList();
     }
 
     @Override
@@ -107,8 +113,26 @@ public class TenantServiceImpl implements TenantService {
 
     @Override
     @Transactional
+    public TenantResponse update(UUID tenantId, UpdateTenantRequest request) {
+        Tenant tenant = requireTenant(tenantId);
+        String slug = normalizeSlug(request.slug());
+        if (tenantRepository.existsBySlugAndIdNot(slug, tenantId)) {
+            throw new BusinessException("Slug ya esta tomado: " + slug);
+        }
+
+        tenant.setName(normalizeRequired(request.name()));
+        tenant.setSlug(slug);
+        tenant.setPlanName(normalizeUpper(request.planName()));
+        return toResponse(tenant);
+    }
+
+    @Override
+    @Transactional
     public TenantResponse suspend(UUID tenantId) {
         Tenant tenant = requireTenant(tenantId);
+        if ("CANCELLED".equals(tenant.getStatus())) {
+            throw new BusinessException("No se puede suspender un tenant cancelado");
+        }
         tenant.setStatus("SUSPENDED");
         return toResponse(tenant);
     }
@@ -117,6 +141,9 @@ public class TenantServiceImpl implements TenantService {
     @Transactional
     public TenantResponse activate(UUID tenantId) {
         Tenant tenant = requireTenant(tenantId);
+        if ("CANCELLED".equals(tenant.getStatus())) {
+            throw new BusinessException("No se puede activar un tenant cancelado");
+        }
         tenant.setStatus("ACTIVE");
         return toResponse(tenant);
     }
@@ -133,19 +160,30 @@ public class TenantServiceImpl implements TenantService {
     @Transactional
     public TenantBusinessInfoResponse updateBusinessInfo(UUID tenantId, UpdateBusinessInfoRequest request) {
         validateBusinessRule(request.businessType(), request.ruc());
+        requireTenant(tenantId);
         TenantBusinessInfo bi = businessInfoRepository.findByTenantId(tenantId)
             .orElseThrow(() -> new ResourceNotFoundException("Datos comerciales no encontrados"));
 
-        bi.setBusinessType(request.businessType());
-        bi.setCommercialName(request.commercialName());
-        bi.setLegalName(request.legalName());
-        bi.setRuc(request.ruc());
-        bi.setPhone(request.phone());
-        bi.setEmail(request.email());
-        bi.setAddress(request.address());
-        bi.setDistrict(request.district());
-        bi.setProvince(request.province());
-        bi.setDepartment(request.department());
+        String businessType = normalizeUpper(request.businessType());
+        String legalName = normalizeNullable(request.legalName());
+        String ruc = normalizeNullable(request.ruc());
+        boolean documentChanged = !Objects.equals(bi.getBusinessType(), businessType)
+            || !Objects.equals(bi.getLegalName(), legalName)
+            || !Objects.equals(bi.getRuc(), ruc);
+
+        bi.setBusinessType(businessType);
+        bi.setCommercialName(normalizeRequired(request.commercialName()));
+        bi.setLegalName(legalName);
+        bi.setRuc(ruc);
+        bi.setPhone(normalizeNullable(request.phone()));
+        bi.setEmail(normalizeEmail(request.email()));
+        bi.setAddress(normalizeNullable(request.address()));
+        bi.setDistrict(normalizeNullable(request.district()));
+        bi.setProvince(normalizeNullable(request.province()));
+        bi.setDepartment(normalizeNullable(request.department()));
+        if (documentChanged) {
+            bi.setDocumentStatus("PENDING_VERIFICATION");
+        }
 
         return toBusinessInfoResponse(bi);
     }
@@ -161,6 +199,7 @@ public class TenantServiceImpl implements TenantService {
     @Override
     @Transactional
     public TenantSettingsResponse updateSettings(UUID tenantId, UpdateTenantSettingsRequest request) {
+        requireTenant(tenantId);
         TenantSettings settings = settingsRepository.findByTenantId(tenantId)
             .orElseThrow(() -> new ResourceNotFoundException("Configuracion no encontrada"));
 
@@ -173,16 +212,16 @@ public class TenantServiceImpl implements TenantService {
             settings.setTemplate(template);
         }
 
-        settings.setLogoUrl(request.logoUrl());
-        settings.setBannerUrl(request.bannerUrl());
-        settings.setPrimaryColor(request.primaryColor());
-        settings.setSecondaryColor(request.secondaryColor());
-        settings.setAccentColor(request.accentColor());
-        settings.setFontFamily(request.fontFamily());
-        settings.setWhatsappNumber(request.whatsappNumber());
-        settings.setInstagramUrl(request.instagramUrl());
-        settings.setFacebookUrl(request.facebookUrl());
-        settings.setTiktokUrl(request.tiktokUrl());
+        settings.setLogoUrl(normalizeNullable(request.logoUrl()));
+        settings.setBannerUrl(normalizeNullable(request.bannerUrl()));
+        settings.setPrimaryColor(normalizeUpperNullable(request.primaryColor()));
+        settings.setSecondaryColor(normalizeUpperNullable(request.secondaryColor()));
+        settings.setAccentColor(normalizeUpperNullable(request.accentColor()));
+        settings.setFontFamily(normalizeNullable(request.fontFamily()));
+        settings.setWhatsappNumber(normalizeNullable(request.whatsappNumber()));
+        settings.setInstagramUrl(normalizeNullable(request.instagramUrl()));
+        settings.setFacebookUrl(normalizeNullable(request.facebookUrl()));
+        settings.setTiktokUrl(normalizeNullable(request.tiktokUrl()));
 
         return toSettingsResponse(settings);
     }
@@ -190,17 +229,20 @@ public class TenantServiceImpl implements TenantService {
     @Override
     @Transactional(readOnly = true)
     public StoreInfoResponse getPublicBySlug(String slug) {
-        Tenant tenant = tenantRepository.findBySlug(slug)
-            .orElseThrow(() -> new ResourceNotFoundException("Tienda no encontrada: " + slug));
+        String normalizedSlug = normalizeSlug(slug);
+        Tenant tenant = tenantRepository.findBySlug(normalizedSlug)
+            .orElseThrow(() -> new ResourceNotFoundException("Tienda no encontrada: " + normalizedSlug));
         if (!PUBLIC_STATUSES.contains(tenant.getStatus())) {
-            throw new BusinessException("Tienda no disponible");
+            throw new ResourceNotFoundException("Tienda no encontrada: " + normalizedSlug);
         }
+        TenantBusinessInfo businessInfo = businessInfoRepository.findByTenantId(tenant.getId()).orElse(null);
         TenantSettings settings = settingsRepository.findByTenantId(tenant.getId()).orElse(null);
         return new StoreInfoResponse(
             tenant.getId(),
             tenant.getName(),
             tenant.getSlug(),
             tenant.getStatus(),
+            businessInfo != null ? toStoreBusinessInfoResponse(businessInfo) : null,
             settings != null ? toSettingsResponse(settings) : null
         );
     }
@@ -211,24 +253,59 @@ public class TenantServiceImpl implements TenantService {
     }
 
     private void validateBusinessRule(String businessType, String ruc) {
-        if ("EMPRESA".equalsIgnoreCase(businessType)) {
-            if (ruc == null || !ruc.matches("^\\d{11}$")) {
-                throw new BusinessException("RUC obligatorio (11 digitos) para business_type EMPRESA");
-            }
+        String normalizedType = normalizeUpper(businessType);
+        String normalizedRuc = normalizeNullable(ruc);
+        if (!SUPPORTED_BUSINESS_TYPES.contains(normalizedType)) {
+            throw new BusinessException("business_type debe ser EMPRESA o PERSONA_NATURAL");
+        }
+        if (normalizedRuc != null && !normalizedRuc.matches("^\\d{11}$")) {
+            throw new BusinessException("RUC debe tener 11 digitos");
+        }
+        if ("EMPRESA".equals(normalizedType) && normalizedRuc == null) {
+            throw new BusinessException("RUC obligatorio (11 digitos) para business_type EMPRESA");
         }
     }
 
     private void applyBusinessInfo(TenantBusinessInfo bi, BusinessInfoRequest r) {
-        bi.setBusinessType(r.businessType());
-        bi.setCommercialName(r.commercialName());
-        bi.setLegalName(r.legalName());
-        bi.setRuc(r.ruc());
-        bi.setPhone(r.phone());
-        bi.setEmail(r.email());
-        bi.setAddress(r.address());
-        bi.setDistrict(r.district());
-        bi.setProvince(r.province());
-        bi.setDepartment(r.department());
+        bi.setBusinessType(normalizeUpper(r.businessType()));
+        bi.setCommercialName(normalizeRequired(r.commercialName()));
+        bi.setLegalName(normalizeNullable(r.legalName()));
+        bi.setRuc(normalizeNullable(r.ruc()));
+        bi.setPhone(normalizeNullable(r.phone()));
+        bi.setEmail(normalizeEmail(r.email()));
+        bi.setAddress(normalizeNullable(r.address()));
+        bi.setDistrict(normalizeNullable(r.district()));
+        bi.setProvince(normalizeNullable(r.province()));
+        bi.setDepartment(normalizeNullable(r.department()));
+    }
+
+    private String normalizeRequired(String value) {
+        return value.trim();
+    }
+
+    private String normalizeNullable(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    private String normalizeEmail(String value) {
+        String normalized = normalizeNullable(value);
+        return normalized != null ? normalized.toLowerCase(Locale.ROOT) : null;
+    }
+
+    private String normalizeSlug(String value) {
+        return normalizeRequired(value).toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeUpper(String value) {
+        return normalizeRequired(value).toUpperCase(Locale.ROOT);
+    }
+
+    private String normalizeUpperNullable(String value) {
+        String normalized = normalizeNullable(value);
+        return normalized != null ? normalized.toUpperCase(Locale.ROOT) : null;
     }
 
     private TenantResponse toResponse(Tenant t) {
@@ -248,6 +325,20 @@ public class TenantServiceImpl implements TenantService {
             bi.getBusinessType(), bi.getCommercialName(), bi.getLegalName(), bi.getRuc(),
             bi.getDocumentStatus(), bi.getPhone(), bi.getEmail(), bi.getAddress(),
             bi.getDistrict(), bi.getProvince(), bi.getDepartment()
+        );
+    }
+
+    private StoreBusinessInfoResponse toStoreBusinessInfoResponse(TenantBusinessInfo bi) {
+        return new StoreBusinessInfoResponse(
+            bi.getCommercialName(),
+            bi.getLegalName(),
+            bi.getRuc(),
+            bi.getPhone(),
+            bi.getEmail(),
+            bi.getAddress(),
+            bi.getDistrict(),
+            bi.getProvince(),
+            bi.getDepartment()
         );
     }
 

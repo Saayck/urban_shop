@@ -7,6 +7,7 @@ public record StoreInfoResponse(
     String name,
     String slug,
     String status,
+    StoreBusinessInfoResponse businessInfo,
     TenantSettingsResponse settings
 ) {
 }

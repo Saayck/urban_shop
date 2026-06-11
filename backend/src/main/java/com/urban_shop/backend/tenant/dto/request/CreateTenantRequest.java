@@ -11,7 +11,9 @@ public record CreateTenantRequest(
     @NotBlank
     @Pattern(regexp = "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$", message = "slug debe ser minusculas, numeros y guiones")
     @Size(max = 100) String slug,
-    @NotBlank @Size(max = 50) String planName,
+    @NotBlank
+    @Pattern(regexp = "^[A-Z][A-Z0-9_]*$", message = "planName debe usar mayusculas, numeros y guion bajo")
+    @Size(max = 50) String planName,
     @NotNull @Valid BusinessInfoRequest businessInfo,
     @NotNull @Valid InitialAdminRequest initialAdmin
 ) {

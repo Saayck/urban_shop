@@ -9,8 +9,10 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.http.MediaType.APPLICATION_JSON;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -33,11 +35,29 @@ class BackendApplicationTests {
 	}
 
 	@Test
+	void templatesArePublic() throws Exception {
+		mockMvc.perform(get("/api/templates"))
+			.andExpect(status().isOk());
+	}
+
+	@Test
 	@WithMockUser(roles = "SALES_STAFF")
 	void salesStaffCannotManageTenantConfiguration() throws Exception {
 		mockMvc.perform(get("/api/admin/tenant"))
 			.andExpect(status().isForbidden())
 			.andExpect(jsonPath("$.status").value(403))
 			.andExpect(jsonPath("$.message").value("Acceso denegado"));
+	}
+
+	@Test
+	@WithMockUser(roles = "SALES_STAFF")
+	void salesStaffCannotWriteCatalog() throws Exception {
+		mockMvc.perform(post("/api/admin/brands")
+				.contentType(APPLICATION_JSON)
+				.content("""
+					{"name":"Urban King"}
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.status").value(403));
 	}
 }
