@@ -10,4 +10,5 @@ public record StoreInfoResponse(
     StoreBusinessInfoResponse businessInfo,
     TenantSettingsResponse settings
 ) {
+
 }

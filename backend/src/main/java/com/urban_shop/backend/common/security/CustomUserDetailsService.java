@@ -9,6 +9,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.urban_shop.backend.user.entity.User;
 import com.urban_shop.backend.user.repository.UserRepository;
 import com.urban_shop.backend.tenant.repository.TenantRepository;
+import com.urban_shop.backend.customer.entity.Customer;
+import com.urban_shop.backend.customer.repository.CustomerRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -22,6 +24,7 @@ public class CustomUserDetailsService implements UserDetailsService {
     private static final Set<String> ENABLED_TENANT_STATUSES = Set.of("ACTIVE", "TRIAL");
 
     private final UserRepository userRepository;
+    private final CustomerRepository customerRepository;
     private final TenantRepository tenantRepository;
 
     @Override
@@ -39,6 +42,17 @@ public class CustomUserDetailsService implements UserDetailsService {
         return buildUserDetails(user);
     }
 
+    @Transactional(readOnly = true)
+    public CustomUserDetails loadPrincipalById(UUID principalId, PrincipalType principalType)
+        throws UsernameNotFoundException {
+        if (principalType == PrincipalType.CUSTOMER) {
+            Customer customer = customerRepository.findById(principalId)
+                .orElseThrow(() -> new UsernameNotFoundException("Cliente no encontrado: " + principalId));
+            return buildCustomerDetails(customer);
+        }
+        return loadUserById(principalId);
+    }
+
     private CustomUserDetails buildUserDetails(User user) {
         boolean tenantEnabled;
         if (user.getTenantId() == null) {
@@ -49,5 +63,12 @@ public class CustomUserDetailsService implements UserDetailsService {
                 .orElse(false);
         }
         return new CustomUserDetails(user, tenantEnabled);
+    }
+
+    private CustomUserDetails buildCustomerDetails(Customer customer) {
+        boolean tenantEnabled = tenantRepository.findById(customer.getTenantId())
+            .map(tenant -> ENABLED_TENANT_STATUSES.contains(tenant.getStatus()))
+            .orElse(false);
+        return new CustomUserDetails(customer, tenantEnabled);
     }
 }

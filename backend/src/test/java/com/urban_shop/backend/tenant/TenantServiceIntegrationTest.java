@@ -1,5 +1,16 @@
 package com.urban_shop.backend.tenant;
 
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.urban_shop.backend.common.exception.BusinessException;
 import com.urban_shop.backend.common.exception.ResourceNotFoundException;
 import com.urban_shop.backend.template.entity.StoreTemplate;
@@ -13,22 +24,10 @@ import com.urban_shop.backend.tenant.dto.request.UpdateTenantSettingsRequest;
 import com.urban_shop.backend.tenant.dto.response.TenantDetailResponse;
 import com.urban_shop.backend.tenant.entity.TenantBusinessInfo;
 import com.urban_shop.backend.tenant.repository.TenantBusinessInfoRepository;
-import com.urban_shop.backend.tenant.repository.TenantRepository;
 import com.urban_shop.backend.tenant.service.TenantService;
 import com.urban_shop.backend.user.entity.Role;
 import com.urban_shop.backend.user.repository.RoleRepository;
 import com.urban_shop.backend.user.repository.UserRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -37,9 +36,6 @@ class TenantServiceIntegrationTest {
 
     @Autowired
     private TenantService tenantService;
-
-    @Autowired
-    private TenantRepository tenantRepository;
 
     @Autowired
     private TenantBusinessInfoRepository businessInfoRepository;
@@ -54,7 +50,7 @@ class TenantServiceIntegrationTest {
     private UserRepository userRepository;
 
     @BeforeEach
-    void setUp() {
+    protected void setUp() {
         if (roleRepository.findByName("TENANT_ADMIN").isEmpty()) {
             Role role = new Role();
             role.setName("TENANT_ADMIN");

@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.urban_shop.backend.auth.dto.request.LoginRequest;
+import com.urban_shop.backend.auth.dto.request.RegisterCustomerRequest;
 import com.urban_shop.backend.auth.dto.response.LoginResponse;
 import com.urban_shop.backend.auth.dto.response.UserInfoResponse;
 import com.urban_shop.backend.auth.service.AuthService;
@@ -29,8 +30,15 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(request));
     }
 
+    @PostMapping("/register-customer")
+    public ResponseEntity<LoginResponse> registerCustomer(
+        @Valid @RequestBody RegisterCustomerRequest request
+    ) {
+        return ResponseEntity.status(201).body(authService.registerCustomer(request));
+    }
+
     @GetMapping("/me")
     public ResponseEntity<UserInfoResponse> me(@AuthenticationPrincipal CustomUserDetails userDetails) {
-        return ResponseEntity.ok(authService.me(userDetails.getUserId()));
+        return ResponseEntity.ok(authService.me(userDetails));
     }
 }

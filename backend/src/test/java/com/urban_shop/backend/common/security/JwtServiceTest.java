@@ -39,6 +39,7 @@ class JwtServiceTest {
         assertThat(claims.get("tenant_id", String.class)).isEqualTo(tenantId.toString());
         assertThat(claims.get("email", String.class)).isEqualTo("admin@store.pe");
         assertThat(claims.get("roles", List.class)).containsExactly("TENANT_ADMIN");
+        assertThat(claims.get("principal_type", String.class)).isEqualTo("INTERNAL_USER");
         assertThat(claims.getIssuer()).isEqualTo("urban-shop-test");
     }
 

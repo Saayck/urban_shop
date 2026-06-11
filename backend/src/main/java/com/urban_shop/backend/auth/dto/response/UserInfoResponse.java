@@ -8,6 +8,7 @@ public record UserInfoResponse(
     UUID tenantId,
     String email,
     String fullName,
-    Set<String> roles
+    Set<String> roles,
+    String principalType
 ) {
 }

@@ -18,7 +18,7 @@ public interface ProductImageRepository extends JpaRepository<ProductImage, UUID
 
     Optional<ProductImage> findByIdAndProductId(UUID id, UUID productId);
 
-    @Modifying
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("update ProductImage image set image.main = false where image.productId = :productId")
     void clearMainImage(UUID productId);
 }

@@ -47,10 +47,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Claims claims = jwtService.parse(token);
                 UUID userId = parseUserId(claims.getSubject());
                 String email = claims.get("email", String.class);
+                PrincipalType principalType = parsePrincipalType(claims);
 
                 if (SecurityContextHolder.getContext().getAuthentication() == null) {
-                    CustomUserDetails userDetails = userDetailsService.loadUserById(userId);
-                    validateClaims(claims, email, userDetails);
+                    CustomUserDetails userDetails = principalType == PrincipalType.CUSTOMER
+                        ? userDetailsService.loadPrincipalById(userId, principalType)
+                        : userDetailsService.loadUserById(userId);
+                    validateClaims(claims, email, principalType, userDetails);
                     if (!userDetails.isEnabled()) {
                         throw new DisabledException("Usuario o tenant deshabilitado");
                     }
@@ -85,9 +88,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         return UUID.fromString(subject);
     }
 
-    private void validateClaims(Claims claims, String email, CustomUserDetails userDetails) {
+    private PrincipalType parsePrincipalType(Claims claims) {
+        String value = claims.get("principal_type", String.class);
+        if (value == null || value.isBlank()) {
+            throw new JwtException("JWT principal type is required");
+        }
+        return PrincipalType.valueOf(value);
+    }
+
+    private void validateClaims(
+        Claims claims,
+        String email,
+        PrincipalType principalType,
+        CustomUserDetails userDetails
+    ) {
         if (email == null || !email.equalsIgnoreCase(userDetails.getUsername())) {
             throw new JwtException("JWT email does not match current user");
+        }
+        if (principalType != userDetails.getPrincipalType()) {
+            throw new JwtException("JWT principal type does not match current principal");
         }
 
         String tenantId = claims.get("tenant_id", String.class);
