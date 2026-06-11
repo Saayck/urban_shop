@@ -1,22 +1,23 @@
 package com.urban_shop.backend.common.security;
 
-import com.urban_shop.backend.common.tenant.TenantContext;
-import com.urban_shop.backend.user.entity.User;
-import jakarta.servlet.FilterChain;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.security.core.context.SecurityContextHolder;
-
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.core.context.SecurityContextHolder;
+
+import com.urban_shop.backend.common.tenant.TenantContext;
+import com.urban_shop.backend.user.entity.User;
+
+import jakarta.servlet.FilterChain;
 
 class JwtAuthenticationFilterTest {
 
@@ -25,7 +26,7 @@ class JwtAuthenticationFilterTest {
     private JwtAuthenticationFilter filter;
 
     @BeforeEach
-    void setUp() {
+    protected void setUp() {
         JwtProperties properties = new JwtProperties();
         properties.setSecret("MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
         properties.setExpirationMs(3600000);
@@ -38,7 +39,7 @@ class JwtAuthenticationFilterTest {
     }
 
     @AfterEach
-    void tearDown() {
+    protected void tearDown() {
         SecurityContextHolder.clearContext();
         TenantContext.clear();
     }

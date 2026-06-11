@@ -2,6 +2,7 @@ package com.urban_shop.backend.payment.service;
 
 import com.urban_shop.backend.common.exception.BusinessException;
 import com.urban_shop.backend.common.exception.ResourceNotFoundException;
+import com.urban_shop.backend.common.response.PageResponse;
 import com.urban_shop.backend.order.entity.CustomerOrder;
 import com.urban_shop.backend.order.entity.OrderPaymentStatus;
 import com.urban_shop.backend.order.entity.OrderStatus;
@@ -17,6 +18,9 @@ import com.urban_shop.backend.payment.entity.PaymentStatus;
 import com.urban_shop.backend.payment.mapper.PaymentMapper;
 import com.urban_shop.backend.payment.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -76,6 +80,31 @@ public class PaymentServiceImpl implements PaymentService {
             : OrderPaymentStatus.MANUAL_REVIEW);
         orderRepository.save(order);
         return PaymentMapper.toResponse(paymentRepository.save(payment));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<PaymentResponse> listAdmin(
+        UUID tenantId,
+        PaymentStatus status,
+        int page,
+        int size
+    ) {
+        Page<Payment> payments = paymentRepository.findAdmin(
+            tenantId,
+            status,
+            PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))
+        );
+        return PageResponse.from(payments.map(PaymentMapper::toResponse));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaymentResponse getAdmin(UUID tenantId, UUID paymentId) {
+        return PaymentMapper.toResponse(
+            paymentRepository.findByTenantIdAndId(tenantId, paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Pago no encontrado"))
+        );
     }
 
     @Override

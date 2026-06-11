@@ -3,6 +3,8 @@ package com.urban_shop.backend.payment.repository;
 import com.urban_shop.backend.payment.entity.Payment;
 import com.urban_shop.backend.payment.entity.PaymentStatus;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -23,6 +25,17 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
         UUID tenantId,
         UUID orderId,
         Collection<PaymentStatus> statuses
+    );
+
+    @Query("""
+        select p from Payment p
+        where p.tenantId = :tenantId
+          and (:status is null or p.status = :status)
+        """)
+    Page<Payment> findAdmin(
+        @Param("tenantId") UUID tenantId,
+        @Param("status") PaymentStatus status,
+        Pageable pageable
     );
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
