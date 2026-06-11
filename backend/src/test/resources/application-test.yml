@@ -1,0 +1,32 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:urban_shop_test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+
+  flyway:
+    enabled: false
+
+jwt:
+  secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+  expiration-ms: 3600000
+  issuer: urban-shop-backend-test
+
+app:
+  security:
+    cors:
+      allowed-origins:
+        - http://localhost:3000
+
+  bootstrap:
+    super-admin:
+      enabled: false
+      email:
+      password:
+      full-name: Super Administrador

@@ -5,6 +5,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +19,11 @@ import java.util.List;
 public class JwtService {
 
     private final JwtProperties properties;
+
+    @PostConstruct
+    void validateConfiguration() {
+        signingKey();
+    }
 
     private SecretKey signingKey() {
         return Keys.hmacShaKeyFor(Decoders.BASE64.decode(properties.getSecret()));
@@ -33,6 +39,7 @@ public class JwtService {
             .claim("email", user.getEmail())
             .issuedAt(Date.from(now))
             .expiration(Date.from(expiry))
+            .issuer(properties.getIssuer())
             .signWith(signingKey())
             .compact();
     }
@@ -40,6 +47,7 @@ public class JwtService {
     public Claims parse(String token) {
         return Jwts.parser()
             .verifyWith(signingKey())
+            .requireIssuer(properties.getIssuer())
             .build()
             .parseSignedClaims(token)
             .getPayload();

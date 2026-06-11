@@ -18,9 +18,11 @@ public class CustomUserDetails implements UserDetails {
 
     private final User user;
     private final List<GrantedAuthority> authorities;
+    private final boolean tenantEnabled;
 
-    public CustomUserDetails(User user) {
+    public CustomUserDetails(User user, boolean tenantEnabled) {
         this.user = user;
+        this.tenantEnabled = tenantEnabled;
         this.authorities = user.getRoles().stream()
                 .map(Role::getName)
                 .map(name -> (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + name))
@@ -67,6 +69,6 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return user.isActive();
+        return user.isActive() && tenantEnabled;
     }
 }

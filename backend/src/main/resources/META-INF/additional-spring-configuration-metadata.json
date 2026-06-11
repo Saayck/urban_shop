@@ -1,12 +1,44 @@
-{"properties": [
+{
+  "properties": [
   {
     "name": "jwt.secret",
     "type": "java.lang.String",
-    "description": "A description for 'jwt.secret'"
+    "description": "Base64-encoded JWT signing key containing at least 32 random bytes."
   },
   {
     "name": "jwt.expiration-ms",
+    "type": "java.lang.Long",
+    "description": "JWT lifetime in milliseconds."
+  },
+  {
+    "name": "jwt.issuer",
     "type": "java.lang.String",
-    "description": "A description for 'jwt.expiration-ms'"
+    "description": "Expected issuer for generated and accepted JWTs."
+  },
+  {
+    "name": "app.security.cors.allowed-origins",
+    "type": "java.util.List<java.lang.String>",
+    "description": "Origins allowed to call the API from a browser."
+  },
+  {
+    "name": "app.bootstrap.super-admin.enabled",
+    "type": "java.lang.Boolean",
+    "description": "Creates the initial SUPER_ADMIN when explicitly enabled."
+  },
+  {
+    "name": "app.bootstrap.super-admin.email",
+    "type": "java.lang.String",
+    "description": "Email used only while bootstrapping the initial SUPER_ADMIN."
+  },
+  {
+    "name": "app.bootstrap.super-admin.password",
+    "type": "java.lang.String",
+    "description": "Password used only while bootstrapping the initial SUPER_ADMIN."
+  },
+  {
+    "name": "app.bootstrap.super-admin.full-name",
+    "type": "java.lang.String",
+    "description": "Display name for the initial SUPER_ADMIN."
   }
-]}
+  ]
+}

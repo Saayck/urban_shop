@@ -53,7 +53,7 @@ public class TenantServiceImpl implements TenantService {
             throw new BusinessException("Slug ya esta tomado: " + request.slug());
         }
         validateBusinessRule(request.businessInfo().businessType(), request.businessInfo().ruc());
-        if (userRepository.existsByEmail(request.initialAdmin().email())) {
+        if (userRepository.existsByEmailIgnoreCase(request.initialAdmin().email())) {
             throw new BusinessException("Email ya esta tomado: " + request.initialAdmin().email());
         }
 
@@ -80,7 +80,7 @@ public class TenantServiceImpl implements TenantService {
         User admin = new User();
         admin.setTenantId(tenant.getId());
         admin.setFullName(request.initialAdmin().fullName());
-        admin.setEmail(request.initialAdmin().email());
+        admin.setEmail(request.initialAdmin().email().trim().toLowerCase());
         admin.setPasswordHash(passwordEncoder.encode(request.initialAdmin().password()));
         admin.setPhone(request.initialAdmin().phone());
         admin.setActive(true);

@@ -8,20 +8,46 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.urban_shop.backend.user.entity.User;
 import com.urban_shop.backend.user.repository.UserRepository;
+import com.urban_shop.backend.tenant.repository.TenantRepository;
 
 import lombok.RequiredArgsConstructor;
+
+import java.util.Set;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class CustomUserDetailsService implements UserDetailsService {
 
+    private static final Set<String> ENABLED_TENANT_STATUSES = Set.of("ACTIVE", "TRIAL");
+
     private final UserRepository userRepository;
+    private final TenantRepository tenantRepository;
 
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        User user = userRepository.findByEmail(email)
+        User user = userRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(() -> new UsernameNotFoundException("Usuario no encontrado: " + email));
-        return new CustomUserDetails(user);
+        return buildUserDetails(user);
+    }
+
+    @Transactional(readOnly = true)
+    public CustomUserDetails loadUserById(UUID userId) throws UsernameNotFoundException {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new UsernameNotFoundException("Usuario no encontrado: " + userId));
+        return buildUserDetails(user);
+    }
+
+    private CustomUserDetails buildUserDetails(User user) {
+        boolean tenantEnabled;
+        if (user.getTenantId() == null) {
+            tenantEnabled = user.getRoles().stream().anyMatch(role -> "SUPER_ADMIN".equals(role.getName()));
+        } else {
+            tenantEnabled = tenantRepository.findById(user.getTenantId())
+                .map(tenant -> ENABLED_TENANT_STATUSES.contains(tenant.getStatus()))
+                .orElse(false);
+        }
+        return new CustomUserDetails(user, tenantEnabled);
     }
 }
