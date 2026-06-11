@@ -1,0 +1,31 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: urban-shop-backend
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/urban_shop_dev
+    username: postgres
+    password: admin
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        "[format_sql]": true
+        jdbc:
+          "[time_zone]": UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+jwt:
+  secret: f2BGUC7os0JlPPkudo0G9UFeDHc1gqnwmTAP/ne1g2M=
+  expiration-ms: 3600000
