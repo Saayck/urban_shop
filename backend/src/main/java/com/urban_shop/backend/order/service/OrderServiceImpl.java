@@ -1,5 +1,6 @@
 package com.urban_shop.backend.order.service;
 
+import com.urban_shop.backend.audit.service.AuditService;
 import com.urban_shop.backend.cart.entity.Cart;
 import com.urban_shop.backend.cart.entity.CartItem;
 import com.urban_shop.backend.cart.entity.CartStatus;
@@ -8,6 +9,8 @@ import com.urban_shop.backend.cart.repository.CartRepository;
 import com.urban_shop.backend.common.exception.BusinessException;
 import com.urban_shop.backend.common.exception.ResourceNotFoundException;
 import com.urban_shop.backend.common.response.PageResponse;
+import com.urban_shop.backend.coupon.entity.Coupon;
+import com.urban_shop.backend.coupon.service.CouponService;
 import com.urban_shop.backend.customer.entity.Customer;
 import com.urban_shop.backend.customer.entity.CustomerAddress;
 import com.urban_shop.backend.customer.repository.CustomerAddressRepository;
@@ -15,6 +18,7 @@ import com.urban_shop.backend.customer.repository.CustomerRepository;
 import com.urban_shop.backend.inventory.dto.request.InventoryMovementRequest;
 import com.urban_shop.backend.inventory.entity.InventoryMovementType;
 import com.urban_shop.backend.inventory.service.InventoryService;
+import com.urban_shop.backend.order.dto.request.OrderCancelRequest;
 import com.urban_shop.backend.order.dto.request.OrderCreateRequest;
 import com.urban_shop.backend.order.dto.request.OrderStatusUpdateRequest;
 import com.urban_shop.backend.order.dto.response.OrderDetailResponse;
@@ -37,8 +41,12 @@ import com.urban_shop.backend.payment.repository.PaymentRepository;
 import com.urban_shop.backend.product.entity.Product;
 import com.urban_shop.backend.product.entity.ProductStatus;
 import com.urban_shop.backend.product.entity.ProductVariant;
+import com.urban_shop.backend.email.service.EmailService;
 import com.urban_shop.backend.product.repository.ProductRepository;
 import com.urban_shop.backend.product.repository.ProductVariantRepository;
+import com.urban_shop.backend.shipping.dto.response.ShippingQuoteResponse;
+import com.urban_shop.backend.shipping.dto.response.ShippingZoneResponse;
+import com.urban_shop.backend.shipping.service.ShippingZoneService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -62,6 +70,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
 
+    private static final String ORDER_NOT_FOUND = "Pedido no encontrado";
+
     private static final Collection<PaymentStatus> CANCELLABLE_PAYMENT_STATUSES = List.of(
         PaymentStatus.PENDING,
         PaymentStatus.MANUAL_REVIEW
@@ -78,6 +88,10 @@ public class OrderServiceImpl implements OrderService {
     private final ProductRepository productRepository;
     private final ProductVariantRepository variantRepository;
     private final InventoryService inventoryService;
+    private final ShippingZoneService shippingZoneService;
+    private final EmailService emailService;
+    private final AuditService auditService;
+    private final CouponService couponService;
 
     @Override
     @Transactional
@@ -105,6 +119,7 @@ public class OrderServiceImpl implements OrderService {
         CustomerAddress address = validateDelivery(customerId, request);
         DocumentData document = validateDocument(request);
         CustomerOrder order = createOrder(tenantId, customerId, request, address, document);
+        order.setShippingCost(resolveShippingCost(tenantId, request.deliveryType(), address));
         order = orderRepository.save(order);
 
         BigDecimal subtotal = BigDecimal.ZERO;
@@ -132,12 +147,70 @@ public class OrderServiceImpl implements OrderService {
         }
 
         order.setSubtotal(subtotal);
+        applyCoupon(tenantId, customerId, order, subtotal, request.couponCode());
         order.setTotal(subtotal.add(order.getShippingCost()).subtract(order.getDiscountTotal()));
         orderRepository.save(order);
         cart.setStatus(CartStatus.ORDERED);
         cartRepository.save(cart);
         addHistory(tenantId, order.getId(), OrderStatus.CREATED, null, "Pedido creado");
+        emailService.sendOrderConfirmationEmail(
+            customer.getEmail(),
+            order.getOrderNumber(),
+            order.getTotal().toPlainString()
+        );
         return buildDetail(order);
+    }
+
+    /**
+     * Valida y canjea el cupon sobre el subtotal ya calculado. El descuento se aplica al
+     * subtotal, nunca al costo de envio, y el canje ocurre dentro de la misma transaccion
+     * del pedido para que un fallo posterior no consuma el cupon.
+     */
+    private void applyCoupon(
+        UUID tenantId,
+        UUID customerId,
+        CustomerOrder order,
+        BigDecimal subtotal,
+        String couponCode
+    ) {
+        if (couponCode == null || couponCode.isBlank()) {
+            order.setDiscountTotal(BigDecimal.ZERO);
+            return;
+        }
+
+        Coupon coupon = couponService.validateForCheckout(tenantId, customerId, couponCode, subtotal);
+        BigDecimal discount = couponService.calculateDiscount(coupon, subtotal);
+
+        order.setDiscountTotal(discount);
+        order.setCouponId(coupon.getId());
+        order.setCouponCode(coupon.getCode());
+        couponService.redeem(tenantId, customerId, order.getId(), coupon, discount);
+    }
+
+    /**
+     * Aplica la tarifa de la zona de envio que cubre la direccion. Si la tienda tiene zonas
+     * configuradas pero ninguna cubre la direccion, el pedido se rechaza en vez de despachar gratis.
+     */
+    private BigDecimal resolveShippingCost(UUID tenantId, DeliveryType deliveryType, CustomerAddress address) {
+        if (deliveryType != DeliveryType.DELIVERY || address == null) {
+            return BigDecimal.ZERO;
+        }
+        ShippingQuoteResponse quote = shippingZoneService.quote(
+            tenantId,
+            address.getDepartment(),
+            address.getProvince(),
+            address.getDistrict()
+        );
+        if (quote.covered()) {
+            return quote.price();
+        }
+        boolean shippingConfigured = shippingZoneService.listAdmin(tenantId).stream()
+            .anyMatch(ShippingZoneResponse::active);
+        if (!shippingConfigured) {
+            // La tienda no usa zonas de envio: no se cobra despacho.
+            return BigDecimal.ZERO;
+        }
+        throw new BusinessException("La tienda no realiza envios a la direccion seleccionada");
     }
 
     @Override
@@ -159,7 +232,7 @@ public class OrderServiceImpl implements OrderService {
                 customerId,
                 orderId
             )
-            .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado"));
+            .orElseThrow(() -> new ResourceNotFoundException(ORDER_NOT_FOUND));
         return buildDetail(order);
     }
 
@@ -184,7 +257,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public OrderDetailResponse getAdmin(UUID tenantId, UUID orderId) {
         CustomerOrder order = orderRepository.findByTenantIdAndId(tenantId, orderId)
-            .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado"));
+            .orElseThrow(() -> new ResourceNotFoundException(ORDER_NOT_FOUND));
         return buildDetail(order);
     }
 
@@ -198,6 +271,7 @@ public class OrderServiceImpl implements OrderService {
     ) {
         CustomerOrder order = requireOrderForUpdate(tenantId, orderId);
         OrderStatus target = request.status();
+        OrderStatus current = order.getOrderStatus();
         if (order.getOrderStatus() == target) {
             return buildDetail(order);
         }
@@ -211,7 +285,41 @@ public class OrderServiceImpl implements OrderService {
         order.setOrderStatus(target);
         orderRepository.save(order);
         addHistory(tenantId, orderId, target, changedBy, request.notes());
+        auditService.record("ORDER_STATUS_CHANGED", "CustomerOrder", orderId, current.name(), target.name());
+        notifyStatusChange(order, target);
         return buildDetail(order);
+    }
+
+    @Override
+    @Transactional
+    public OrderDetailResponse cancelByCustomer(
+        UUID tenantId,
+        UUID customerId,
+        UUID orderId,
+        OrderCancelRequest request
+    ) {
+        CustomerOrder order = requireOrderForUpdate(tenantId, orderId);
+        if (!customerId.equals(order.getCustomerId())) {
+            throw new ResourceNotFoundException(ORDER_NOT_FOUND);
+        }
+        if (order.getOrderStatus() == OrderStatus.CANCELLED) {
+            return buildDetail(order);
+        }
+
+        String notes = request != null && request.reason() != null && !request.reason().isBlank()
+            ? "Cancelado por el cliente: " + request.reason().trim()
+            : "Cancelado por el cliente";
+        // changedBy referencia a users(id): en una cancelacion del cliente no hay usuario interno.
+        cancelCreatedOrder(order, null, notes);
+        auditService.record("ORDER_CANCELLED_BY_CUSTOMER", "CustomerOrder", orderId, "CREATED", notes);
+        notifyStatusChange(order, OrderStatus.CANCELLED);
+        return buildDetail(order);
+    }
+
+    private void notifyStatusChange(CustomerOrder order, OrderStatus status) {
+        customerRepository.findById(order.getCustomerId()).ifPresent(customer ->
+            emailService.sendOrderStatusEmail(customer.getEmail(), order.getOrderNumber(), status.name())
+        );
     }
 
     private void validateTransition(CustomerOrder order, OrderStatus target) {
@@ -256,6 +364,10 @@ public class OrderServiceImpl implements OrderService {
             .filter(payment -> CANCELLABLE_PAYMENT_STATUSES.contains(payment.getStatus()))
             .forEach(payment -> payment.setStatus(PaymentStatus.CANCELLED));
         paymentRepository.saveAll(payments);
+
+        // El cupon vuelve al inventario: el pedido que lo consumio ya no existe.
+        couponService.releaseForOrder(order.getTenantId(), order.getId());
+        order.setCouponId(null);
 
         order.setOrderStatus(OrderStatus.CANCELLED);
         order.setPaymentStatus(OrderPaymentStatus.CANCELLED);
@@ -413,7 +525,7 @@ public class OrderServiceImpl implements OrderService {
 
     private CustomerOrder requireOrderForUpdate(UUID tenantId, UUID orderId) {
         return orderRepository.findByTenantIdAndIdForUpdate(tenantId, orderId)
-            .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado"));
+            .orElseThrow(() -> new ResourceNotFoundException(ORDER_NOT_FOUND));
     }
 
     private void addHistory(

@@ -21,4 +21,12 @@ public record PageResponse<T>(
             source.getTotalPages()
         );
     }
+
+    /**
+     * Copia la paginacion conservando los metadatos pero sustituyendo el contenido.
+     * Util cuando los elementos se enriquecen despues, con una consulta agregada.
+     */
+    public <R> PageResponse<R> withContent(List<R> replacement) {
+        return new PageResponse<>(replacement, page, size, totalElements, totalPages);
+    }
 }

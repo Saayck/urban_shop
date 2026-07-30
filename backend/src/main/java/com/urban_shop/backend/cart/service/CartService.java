@@ -20,4 +20,7 @@ public interface CartService {
     );
 
     CartResponse deleteItem(UUID tenantId, UUID customerId, UUID itemId);
+
+    /** Vacia el carrito activo del cliente sin eliminar el carrito en si. */
+    CartResponse clear(UUID tenantId, UUID customerId);
 }

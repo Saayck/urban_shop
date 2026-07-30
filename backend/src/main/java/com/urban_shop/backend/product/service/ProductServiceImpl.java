@@ -4,11 +4,14 @@ import com.urban_shop.backend.brand.entity.Brand;
 import com.urban_shop.backend.brand.repository.BrandRepository;
 import com.urban_shop.backend.category.entity.Category;
 import com.urban_shop.backend.category.repository.CategoryRepository;
+import com.urban_shop.backend.cart.repository.CartItemRepository;
 import com.urban_shop.backend.common.exception.BusinessException;
 import com.urban_shop.backend.common.exception.ResourceNotFoundException;
 import com.urban_shop.backend.common.response.PageResponse;
 import com.urban_shop.backend.common.util.SlugUtils;
 import com.urban_shop.backend.inventory.service.InventoryService;
+import com.urban_shop.backend.media.service.StorageService;
+import com.urban_shop.backend.order.repository.OrderItemRepository;
 import com.urban_shop.backend.product.dto.request.ProductCreateRequest;
 import com.urban_shop.backend.product.dto.request.ProductImageRequest;
 import com.urban_shop.backend.product.dto.request.ProductUpdateRequest;
@@ -32,6 +35,8 @@ import com.urban_shop.backend.product.repository.ProductVariantRepository;
 import com.urban_shop.backend.product.repository.SizeGuideRepository;
 import com.urban_shop.backend.tenant.service.PublicTenantResolver;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -62,9 +67,13 @@ public class ProductServiceImpl implements ProductService {
     private final CategoryRepository categoryRepository;
     private final PublicTenantResolver publicTenantResolver;
     private final InventoryService inventoryService;
+    private final OrderItemRepository orderItemRepository;
+    private final CartItemRepository cartItemRepository;
+    private final StorageService storageService;
 
     @Override
     @Transactional
+    @CacheEvict(value = "storeProducts", allEntries = true)
     public ProductDetailResponse create(UUID tenantId, ProductCreateRequest request) {
         CatalogReferences references = requireReferences(tenantId, request.brandId(), request.categoryId());
         String name = request.name().trim();
@@ -121,6 +130,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "storeProducts", allEntries = true)
     public ProductDetailResponse update(UUID tenantId, UUID productId, ProductUpdateRequest request) {
         Product product = requireProduct(tenantId, productId);
         CatalogReferences references = requireReferences(tenantId, request.brandId(), request.categoryId());
@@ -150,6 +160,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "storeProducts", allEntries = true)
     public ProductDetailResponse updateStatus(UUID tenantId, UUID productId, ProductStatus status) {
         Product product = requireProduct(tenantId, productId);
         CatalogReferences references = requireReferences(tenantId, product.getBrandId(), product.getCategoryId());
@@ -169,6 +180,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "storeProducts", allEntries = true)
     public ProductImageResponse addImage(UUID tenantId, UUID productId, ProductImageRequest request) {
         requireProduct(tenantId, productId);
         List<ProductImage> currentImages = imageRepository
@@ -189,6 +201,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "storeProducts", allEntries = true)
     public void deleteImage(UUID tenantId, UUID productId, UUID imageId) {
         requireProduct(tenantId, productId);
         ProductImage image = imageRepository.findByIdAndProductId(imageId, productId)
@@ -196,6 +209,8 @@ public class ProductServiceImpl implements ProductService {
         boolean wasMain = image.isMain();
         imageRepository.delete(image);
         imageRepository.flush();
+        // Sin esto el archivo quedaria huerfano en disco para siempre.
+        storageService.deleteByPublicUrl(image.getImageUrl());
 
         if (wasMain) {
             imageRepository.findAllByProductIdOrderByDisplayOrderAscCreatedAtAsc(productId).stream()
@@ -209,6 +224,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "storeProducts", allEntries = true)
     public ProductVariantResponse addVariant(
         UUID tenantId,
         UUID productId,
@@ -238,6 +254,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "storeProducts", allEntries = true)
     public ProductVariantResponse updateVariant(
         UUID tenantId,
         UUID productId,
@@ -267,6 +284,55 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "storeProducts", allEntries = true)
+    public void deleteVariant(UUID tenantId, UUID productId, UUID variantId) {
+        Product product = requireProduct(tenantId, productId);
+        ProductVariant variant = requireVariant(tenantId, productId, variantId);
+
+        if (orderItemRepository.existsByVariantId(variantId)) {
+            throw new BusinessException(
+                "No se puede eliminar una variante con pedidos asociados. Desactivela en su lugar."
+            );
+        }
+        if (isPublished(product) && isLastActiveVariant(productId, variantId)) {
+            throw new BusinessException("Un producto publicado debe conservar al menos una variante activa");
+        }
+
+        // Los carritos abiertos que la referencian quedarian huerfanos.
+        cartItemRepository.deleteAll(cartItemRepository.findAllByVariantId(variantId));
+        variantRepository.delete(variant);
+        variantRepository.flush();
+        synchronizeProductStatus(product);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = "storeProducts", allEntries = true)
+    public void delete(UUID tenantId, UUID productId) {
+        Product product = requireProduct(tenantId, productId);
+        if (orderItemRepository.existsByProductId(productId)) {
+            throw new BusinessException(
+                "No se puede eliminar un producto con pedidos asociados. Cambie su estado a INACTIVE."
+            );
+        }
+
+        List<ProductVariant> variants = variantRepository.findAllByProductIdOrderBySizeAscColorAsc(productId);
+        for (ProductVariant variant : variants) {
+            cartItemRepository.deleteAll(cartItemRepository.findAllByVariantId(variant.getId()));
+        }
+        sizeGuideRepository.deleteAll(sizeGuideRepository.findAllByProductIdOrderBySizeAsc(productId));
+
+        List<ProductImage> images = imageRepository.findAllByProductIdOrderByDisplayOrderAscCreatedAtAsc(productId);
+        imageRepository.deleteAll(images);
+        images.forEach(image -> storageService.deleteByPublicUrl(image.getImageUrl()));
+
+        variantRepository.deleteAll(variants);
+        productRepository.delete(product);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = "storeProducts", allEntries = true)
     public SizeGuideResponse addSizeGuide(UUID tenantId, UUID productId, SizeGuideRequest request) {
         requireProduct(tenantId, productId);
         String size = normalizeSize(request.size());
@@ -282,6 +348,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "storeProducts", allEntries = true)
     public SizeGuideResponse updateSizeGuide(
         UUID tenantId,
         UUID productId,
@@ -301,6 +368,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "storeProducts", allEntries = true)
     public void deleteSizeGuide(UUID tenantId, UUID productId, UUID guideId) {
         requireProduct(tenantId, productId);
         SizeGuide guide = sizeGuideRepository.findByIdAndProductId(guideId, productId)
@@ -310,6 +378,10 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(
+        value = "storeProducts",
+        key = "T(java.util.Objects).hash(#tenantSlug, #brandId, #categoryId, #page, #size)"
+    )
     public PageResponse<ProductResponse> listPublic(
         String tenantSlug,
         UUID brandId,
@@ -330,6 +402,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = "storeProducts", key = "#tenantSlug + ':' + #productSlug")
     public ProductDetailResponse getPublic(String tenantSlug, String productSlug) {
         UUID tenantId = publicTenantResolver.requireTenantId(tenantSlug);
         String normalizedSlug;

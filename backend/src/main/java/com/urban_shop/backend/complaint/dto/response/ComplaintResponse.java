@@ -19,6 +19,8 @@ public record ComplaintResponse(
     String description,
     String requestedSolution,
     ComplaintStatus status,
+    String response,
+    LocalDateTime respondedAt,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {

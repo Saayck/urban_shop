@@ -13,6 +13,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -61,4 +62,11 @@ public class ComplaintBook extends TenantScopedEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     private ComplaintStatus status = ComplaintStatus.OPEN;
+
+    /** Respuesta escrita al consumidor, obligatoria para cerrar el reclamo como ANSWERED. */
+    @Column(name = "response_text", columnDefinition = "TEXT")
+    private String responseText;
+
+    @Column(name = "responded_at")
+    private LocalDateTime respondedAt;
 }

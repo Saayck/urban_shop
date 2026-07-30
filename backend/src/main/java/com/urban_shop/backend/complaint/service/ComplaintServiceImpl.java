@@ -11,7 +11,9 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.urban_shop.backend.audit.service.AuditService;
 import com.urban_shop.backend.common.exception.BusinessException;
+import com.urban_shop.backend.email.service.EmailService;
 import com.urban_shop.backend.common.exception.ResourceNotFoundException;
 import com.urban_shop.backend.common.response.PageResponse;
 import com.urban_shop.backend.complaint.dto.request.ComplaintCreateRequest;
@@ -31,6 +33,8 @@ public class ComplaintServiceImpl implements ComplaintService {
 
     private final ComplaintRepository repository;
     private final PublicTenantResolver publicTenantResolver;
+    private final EmailService emailService;
+    private final AuditService auditService;
 
     @Override
     @Transactional
@@ -89,9 +93,55 @@ public class ComplaintServiceImpl implements ComplaintService {
             return ComplaintMapper.toResponse(complaint);
         }
         validateTransition(complaint.getStatus(), target);
+
+        String response = trimToNull(request.response());
+        if (target == ComplaintStatus.ANSWERED && response == null) {
+            throw new BusinessException(
+                "Para responder un reclamo se debe registrar la respuesta al consumidor"
+            );
+        }
+
+        LocalDateTime now = LocalDateTime.now();
         complaint.setStatus(target);
-        complaint.setUpdatedAt(LocalDateTime.now());
-        return ComplaintMapper.toResponse(repository.save(complaint));
+        if (response != null) {
+            complaint.setResponseText(response);
+            complaint.setRespondedAt(now);
+        }
+        complaint.setUpdatedAt(now);
+        ComplaintBook saved = repository.save(complaint);
+
+        notifyConsumer(saved, target, response);
+        auditService.record(
+            "COMPLAINT_STATUS_CHANGED",
+            "ComplaintBook",
+            id,
+            complaint.getStatus().name(),
+            target.name()
+        );
+        return ComplaintMapper.toResponse(saved);
+    }
+
+    /**
+     * El Libro de Reclamaciones obliga a comunicar la respuesta al consumidor.
+     * Si el reclamo se presento sin correo (es opcional), no hay a donde notificar.
+     */
+    private void notifyConsumer(ComplaintBook complaint, ComplaintStatus target, String response) {
+        if (complaint.getCustomerEmail() == null) {
+            return;
+        }
+        if (target == ComplaintStatus.ANSWERED) {
+            emailService.sendComplaintAnsweredEmail(
+                complaint.getCustomerEmail(),
+                complaint.getComplaintNumber(),
+                response
+            );
+        } else {
+            emailService.sendComplaintStatusEmail(
+                complaint.getCustomerEmail(),
+                complaint.getComplaintNumber(),
+                target.name()
+            );
+        }
     }
 
     private void validateTransition(ComplaintStatus current, ComplaintStatus target) {

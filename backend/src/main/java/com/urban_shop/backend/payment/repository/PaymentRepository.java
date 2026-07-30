@@ -27,6 +27,18 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
         Collection<PaymentStatus> statuses
     );
 
+    boolean existsByTenantIdAndProviderIgnoreCaseAndOperationCodeIgnoreCase(
+        UUID tenantId,
+        String provider,
+        String operationCode
+    );
+
+    Optional<Payment> findFirstByTenantIdAndOrderIdAndStatusInOrderByCreatedAtDesc(
+        UUID tenantId,
+        UUID orderId,
+        Collection<PaymentStatus> statuses
+    );
+
     @Query("""
         select p from Payment p
         where p.tenantId = :tenantId

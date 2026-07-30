@@ -66,6 +66,12 @@ public class CartController {
         return cartService.deleteItem(principal.getTenantId(), principal.getPrincipalId(), id);
     }
 
+    @DeleteMapping
+    public CartResponse clear(@AuthenticationPrincipal CustomUserDetails principal) {
+        requireCustomer(principal);
+        return cartService.clear(principal.getTenantId(), principal.getPrincipalId());
+    }
+
     private void requireCustomer(CustomUserDetails principal) {
         if (principal == null || !principal.isCustomer()) {
             throw new AccessDeniedException("Se requiere un cliente autenticado");

@@ -4,6 +4,7 @@ import com.urban_shop.backend.common.exception.BusinessException;
 import com.urban_shop.backend.common.exception.ResourceNotFoundException;
 import com.urban_shop.backend.shipping.dto.request.ShippingZoneCreateRequest;
 import com.urban_shop.backend.shipping.dto.request.ShippingZoneUpdateRequest;
+import com.urban_shop.backend.shipping.dto.response.ShippingQuoteResponse;
 import com.urban_shop.backend.shipping.dto.response.ShippingZoneResponse;
 import com.urban_shop.backend.shipping.entity.ShippingZone;
 import com.urban_shop.backend.shipping.mapper.ShippingZoneMapper;
@@ -13,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -84,6 +86,60 @@ public class ShippingZoneServiceImpl implements ShippingZoneService {
         return repository.findAllByTenantIdAndActiveTrueOrderByNameAsc(tenantId).stream()
             .map(ShippingZoneMapper::toResponse)
             .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ShippingQuoteResponse quote(UUID tenantId, String department, String province, String district) {
+        List<ShippingZone> zones = repository.findAllByTenantIdAndActiveTrueOrderByNameAsc(tenantId);
+        if (zones.isEmpty()) {
+            // La tienda no usa zonas de envio: no se cobra despacho.
+            return ShippingQuoteResponse.notCovered();
+        }
+
+        return zones.stream()
+            .filter(zone -> matches(zone, department, province, district))
+            .max(Comparator.comparingInt(this::specificity))
+            .map(zone -> new ShippingQuoteResponse(
+                zone.getId(),
+                zone.getName(),
+                zone.getPrice(),
+                zone.getEstimatedTime(),
+                true
+            ))
+            .orElseGet(ShippingQuoteResponse::notCovered);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ShippingQuoteResponse quotePublic(String tenantSlug, String department, String province, String district) {
+        return quote(publicTenantResolver.requireTenantId(tenantSlug), department, province, district);
+    }
+
+    /** Una zona aplica si cada campo que declara coincide con la direccion; los campos nulos son comodines. */
+    private boolean matches(ShippingZone zone, String department, String province, String district) {
+        return fieldMatches(zone.getDepartment(), department)
+            && fieldMatches(zone.getProvince(), province)
+            && fieldMatches(zone.getDistrict(), district);
+    }
+
+    private boolean fieldMatches(String zoneValue, String addressValue) {
+        return zoneValue == null || zoneValue.equalsIgnoreCase(addressValue == null ? null : addressValue.trim());
+    }
+
+    /** Cuantos campos concreta la zona: a mayor especificidad, mayor prioridad. */
+    private int specificity(ShippingZone zone) {
+        int score = 0;
+        if (zone.getDepartment() != null) {
+            score++;
+        }
+        if (zone.getProvince() != null) {
+            score++;
+        }
+        if (zone.getDistrict() != null) {
+            score++;
+        }
+        return score;
     }
 
     private ShippingZone requireZone(UUID tenantId, UUID id) {

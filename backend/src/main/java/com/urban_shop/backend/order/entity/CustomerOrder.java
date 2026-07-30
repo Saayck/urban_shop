@@ -88,4 +88,11 @@ public class CustomerOrder extends TenantScopedEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "invoice_type", length = 30)
     private InvoiceType invoiceType;
+
+    @Column(name = "coupon_id")
+    private UUID couponId;
+
+    /** Copia del codigo al momento de la compra, para el detalle del pedido. */
+    @Column(name = "coupon_code", length = 50)
+    private String couponCode;
 }

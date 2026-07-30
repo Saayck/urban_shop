@@ -1,6 +1,7 @@
 package com.urban_shop.backend.order.service;
 
 import com.urban_shop.backend.common.response.PageResponse;
+import com.urban_shop.backend.order.dto.request.OrderCancelRequest;
 import com.urban_shop.backend.order.dto.request.OrderCreateRequest;
 import com.urban_shop.backend.order.dto.request.OrderStatusUpdateRequest;
 import com.urban_shop.backend.order.dto.response.OrderDetailResponse;
@@ -33,5 +34,16 @@ public interface OrderService {
         UUID changedBy,
         UUID orderId,
         OrderStatusUpdateRequest request
+    );
+
+    /**
+     * Cancelacion iniciada por el propio cliente. Solo aplica a pedidos aun en estado CREATED
+     * y no pagados; repone el stock y anula los pagos pendientes.
+     */
+    OrderDetailResponse cancelByCustomer(
+        UUID tenantId,
+        UUID customerId,
+        UUID orderId,
+        OrderCancelRequest request
     );
 }

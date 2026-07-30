@@ -68,4 +68,10 @@ public interface ProductService {
     );
 
     ProductDetailResponse getPublic(String tenantSlug, String productSlug);
+
+    /** Elimina una variante. Falla si tiene pedidos asociados: en ese caso hay que desactivarla. */
+    void deleteVariant(UUID tenantId, UUID productId, UUID variantId);
+
+    /** Elimina el producto con sus imagenes, variantes y guias. Falla si tiene pedidos asociados. */
+    void delete(UUID tenantId, UUID productId);
 }

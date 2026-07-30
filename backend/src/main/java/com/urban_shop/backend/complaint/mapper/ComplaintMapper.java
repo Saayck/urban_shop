@@ -22,6 +22,8 @@ public final class ComplaintMapper {
             complaint.getDescription(),
             complaint.getRequestedSolution(),
             complaint.getStatus(),
+            complaint.getResponseText(),
+            complaint.getRespondedAt(),
             complaint.getCreatedAt(),
             complaint.getUpdatedAt()
         );

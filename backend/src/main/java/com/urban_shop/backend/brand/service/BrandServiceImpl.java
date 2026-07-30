@@ -8,6 +8,7 @@ import com.urban_shop.backend.brand.mapper.BrandMapper;
 import com.urban_shop.backend.brand.repository.BrandRepository;
 import com.urban_shop.backend.common.exception.BusinessException;
 import com.urban_shop.backend.common.exception.ResourceNotFoundException;
+import com.urban_shop.backend.product.repository.ProductRepository;
 import com.urban_shop.backend.tenant.service.PublicTenantResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ import java.util.UUID;
 public class BrandServiceImpl implements BrandService {
 
     private final BrandRepository brandRepository;
+    private final ProductRepository productRepository;
     private final PublicTenantResolver publicTenantResolver;
 
     @Override
@@ -72,6 +74,18 @@ public class BrandServiceImpl implements BrandService {
         brand.setLogoUrl(trimToNull(request.logoUrl()));
         brand.setActive(request.active());
         return BrandMapper.toResponse(brandRepository.save(brand));
+    }
+
+    @Override
+    @Transactional
+    public void delete(UUID tenantId, UUID brandId) {
+        Brand brand = requireBrand(tenantId, brandId);
+        if (productRepository.existsByTenantIdAndBrandId(tenantId, brandId)) {
+            throw new BusinessException(
+                "No se puede eliminar una marca con productos asociados. Desactivela en su lugar."
+            );
+        }
+        brandRepository.delete(brand);
     }
 
     private Brand requireBrand(UUID tenantId, UUID brandId) {

@@ -6,6 +6,7 @@ import com.urban_shop.backend.product.dto.response.ProductResponse;
 import com.urban_shop.backend.product.service.ProductService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @RestController
+@SecurityRequirements
 @RequestMapping("/api/store/{slug}/products")
 @RequiredArgsConstructor
 @Validated

@@ -9,6 +9,7 @@ import com.urban_shop.backend.category.repository.CategoryRepository;
 import com.urban_shop.backend.common.exception.BusinessException;
 import com.urban_shop.backend.common.exception.ResourceNotFoundException;
 import com.urban_shop.backend.common.util.SlugUtils;
+import com.urban_shop.backend.product.repository.ProductRepository;
 import com.urban_shop.backend.tenant.service.PublicTenantResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,15 +22,20 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+
 @Service
 @RequiredArgsConstructor
 public class CategoryServiceImpl implements CategoryService {
 
     private final CategoryRepository categoryRepository;
+    private final ProductRepository productRepository;
     private final PublicTenantResolver publicTenantResolver;
 
     @Override
     @Transactional
+    @CacheEvict(value = "storeCategories", allEntries = true)
     public CategoryResponse create(UUID tenantId, CategoryCreateRequest request) {
         Category parent = requireOptionalParent(tenantId, request.parentId());
         String name = request.name().trim();
@@ -59,6 +65,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = "storeCategories", key = "#tenantSlug")
     public List<CategoryResponse> listPublic(String tenantSlug) {
         UUID tenantId = publicTenantResolver.requireTenantId(tenantSlug);
         List<Category> categories = categoryRepository.findAllByTenantIdOrderByDisplayOrderAscNameAsc(tenantId);
@@ -79,6 +86,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "storeCategories", allEntries = true)
     public CategoryResponse update(UUID tenantId, UUID categoryId, CategoryUpdateRequest request) {
         Category category = requireCategory(tenantId, categoryId);
         Category parent = requireOptionalParent(tenantId, request.parentId());
@@ -98,6 +106,24 @@ public class CategoryServiceImpl implements CategoryService {
 
         Category saved = categoryRepository.save(category);
         return CategoryMapper.toResponse(saved, parent == null ? null : parent.getName());
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = "storeCategories", allEntries = true)
+    public void delete(UUID tenantId, UUID categoryId) {
+        Category category = requireCategory(tenantId, categoryId);
+        if (categoryRepository.existsByTenantIdAndParentId(tenantId, categoryId)) {
+            throw new BusinessException(
+                "No se puede eliminar una categoria con subcategorias. Elimine primero las hijas."
+            );
+        }
+        if (productRepository.existsByTenantIdAndCategoryId(tenantId, categoryId)) {
+            throw new BusinessException(
+                "No se puede eliminar una categoria con productos asociados. Desactivela en su lugar."
+            );
+        }
+        categoryRepository.delete(category);
     }
 
     private Category requireCategory(UUID tenantId, UUID categoryId) {

@@ -5,6 +5,7 @@ import com.urban_shop.backend.complaint.dto.request.ComplaintCreateRequest;
 import com.urban_shop.backend.complaint.dto.response.ComplaintResponse;
 import com.urban_shop.backend.complaint.service.ComplaintService;
 import jakarta.validation.Valid;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @RestController
+@SecurityRequirements
 @RequestMapping("/api/store/{slug}/complaints")
 @RequiredArgsConstructor
 public class StoreComplaintController {

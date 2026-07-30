@@ -15,5 +15,7 @@ public interface CategoryRepository extends JpaRepository<Category, UUID> {
 
     boolean existsByTenantIdAndSlug(UUID tenantId, String slug);
 
+    boolean existsByTenantIdAndParentId(UUID tenantId, UUID parentId);
+
     boolean existsByTenantIdAndSlugAndIdNot(UUID tenantId, String slug, UUID id);
 }

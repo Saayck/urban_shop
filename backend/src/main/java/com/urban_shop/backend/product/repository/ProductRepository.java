@@ -16,6 +16,8 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     Optional<Product> findByTenantIdAndId(UUID tenantId, UUID id);
 
+    Optional<Product> findByTenantIdAndSlug(UUID tenantId, String slug);
+
     Optional<Product> findByTenantIdAndSlugAndStatusIn(
         UUID tenantId,
         String slug,
@@ -23,6 +25,10 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     );
 
     boolean existsByTenantIdAndSlug(UUID tenantId, String slug);
+
+    boolean existsByTenantIdAndBrandId(UUID tenantId, UUID brandId);
+
+    boolean existsByTenantIdAndCategoryId(UUID tenantId, UUID categoryId);
 
     boolean existsByTenantIdAndSlugAndIdNot(UUID tenantId, String slug, UUID id);
 

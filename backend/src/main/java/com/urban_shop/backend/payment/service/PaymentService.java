@@ -3,6 +3,7 @@ package com.urban_shop.backend.payment.service;
 import com.urban_shop.backend.common.response.PageResponse;
 import com.urban_shop.backend.payment.dto.request.PaymentCreateRequest;
 import com.urban_shop.backend.payment.dto.request.PaymentRejectRequest;
+import com.urban_shop.backend.payment.dto.request.PaymentWebhookRequest;
 import com.urban_shop.backend.payment.dto.response.PaymentResponse;
 import com.urban_shop.backend.payment.entity.PaymentStatus;
 
@@ -34,4 +35,10 @@ public interface PaymentService {
         UUID paymentId,
         PaymentRejectRequest request
     );
+
+    /**
+     * Aplica una notificacion de pago ya verificada criptograficamente.
+     * Es idempotente: reenvios del mismo {@code externalTransactionId} no generan pagos duplicados.
+     */
+    void applyWebhookPayment(PaymentWebhookRequest request);
 }

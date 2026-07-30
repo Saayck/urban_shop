@@ -1,5 +1,6 @@
 package com.urban_shop.backend.payment.service;
 
+import com.urban_shop.backend.audit.service.AuditService;
 import com.urban_shop.backend.common.exception.BusinessException;
 import com.urban_shop.backend.common.exception.ResourceNotFoundException;
 import com.urban_shop.backend.common.response.PageResponse;
@@ -11,6 +12,7 @@ import com.urban_shop.backend.order.repository.OrderRepository;
 import com.urban_shop.backend.order.repository.OrderStatusHistoryRepository;
 import com.urban_shop.backend.payment.dto.request.PaymentCreateRequest;
 import com.urban_shop.backend.payment.dto.request.PaymentRejectRequest;
+import com.urban_shop.backend.payment.dto.request.PaymentWebhookRequest;
 import com.urban_shop.backend.payment.dto.response.PaymentResponse;
 import com.urban_shop.backend.payment.entity.Payment;
 import com.urban_shop.backend.payment.entity.PaymentMethod;
@@ -18,6 +20,7 @@ import com.urban_shop.backend.payment.entity.PaymentStatus;
 import com.urban_shop.backend.payment.mapper.PaymentMapper;
 import com.urban_shop.backend.payment.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -26,20 +29,34 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PaymentServiceImpl implements PaymentService {
+
+    private static final String ORDER_NOT_FOUND = "Pedido no encontrado";
+    private static final String PAYMENT_NOT_FOUND = "Pago no encontrado";
 
     private static final List<PaymentStatus> OPEN_PAYMENT_STATUSES = List.of(
         PaymentStatus.PENDING,
         PaymentStatus.MANUAL_REVIEW
     );
 
+    /** Estados que una pasarela puede reportar y que consideramos un cobro efectivo. */
+    private static final Set<String> APPROVED_WEBHOOK_STATUSES = Set.of(
+        "COMPLETED",
+        "APPROVED",
+        "PAID",
+        "SUCCEEDED"
+    );
+
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
     private final OrderStatusHistoryRepository historyRepository;
+    private final AuditService auditService;
 
     @Override
     @Transactional
@@ -51,7 +68,7 @@ public class PaymentServiceImpl implements PaymentService {
     ) {
         CustomerOrder order = orderRepository.findByTenantIdAndIdForUpdate(tenantId, orderId)
             .filter(candidate -> customerId.equals(candidate.getCustomerId()))
-            .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado"));
+            .orElseThrow(() -> new ResourceNotFoundException(ORDER_NOT_FOUND));
         validatePayable(order);
         if (paymentRepository.existsByTenantIdAndOrderIdAndStatusIn(
             tenantId,
@@ -103,7 +120,7 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentResponse getAdmin(UUID tenantId, UUID paymentId) {
         return PaymentMapper.toResponse(
             paymentRepository.findByTenantIdAndId(tenantId, paymentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Pago no encontrado"))
+                .orElseThrow(() -> new ResourceNotFoundException(PAYMENT_NOT_FOUND))
         );
     }
 
@@ -111,11 +128,11 @@ public class PaymentServiceImpl implements PaymentService {
     @Transactional
     public PaymentResponse confirm(UUID tenantId, UUID reviewerId, UUID paymentId) {
         Payment reference = paymentRepository.findByTenantIdAndId(tenantId, paymentId)
-            .orElseThrow(() -> new ResourceNotFoundException("Pago no encontrado"));
+            .orElseThrow(() -> new ResourceNotFoundException(PAYMENT_NOT_FOUND));
         CustomerOrder order = orderRepository.findByTenantIdAndIdForUpdate(tenantId, reference.getOrderId())
-            .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado"));
+            .orElseThrow(() -> new ResourceNotFoundException(ORDER_NOT_FOUND));
         Payment payment = paymentRepository.findByTenantIdAndIdForUpdate(tenantId, paymentId)
-            .orElseThrow(() -> new ResourceNotFoundException("Pago no encontrado"));
+            .orElseThrow(() -> new ResourceNotFoundException(PAYMENT_NOT_FOUND));
 
         validateReviewable(payment, order);
         LocalDateTime now = LocalDateTime.now();
@@ -127,7 +144,14 @@ public class PaymentServiceImpl implements PaymentService {
         order.setPaymentStatus(OrderPaymentStatus.PAID);
         order.setOrderStatus(OrderStatus.PAID);
         orderRepository.save(order);
-        addPaidHistory(tenantId, order.getId(), reviewerId);
+        addHistory(tenantId, order.getId(), OrderStatus.PAID, reviewerId, "Pago confirmado");
+        auditService.record(
+            "PAYMENT_CONFIRMED",
+            "Payment",
+            paymentId,
+            "MANUAL_REVIEW",
+            "PAID por " + payment.getAmount() + " en el pedido " + order.getOrderNumber()
+        );
         return PaymentMapper.toResponse(paymentRepository.save(payment));
     }
 
@@ -140,11 +164,11 @@ public class PaymentServiceImpl implements PaymentService {
         PaymentRejectRequest request
     ) {
         Payment reference = paymentRepository.findByTenantIdAndId(tenantId, paymentId)
-            .orElseThrow(() -> new ResourceNotFoundException("Pago no encontrado"));
+            .orElseThrow(() -> new ResourceNotFoundException(PAYMENT_NOT_FOUND));
         CustomerOrder order = orderRepository.findByTenantIdAndIdForUpdate(tenantId, reference.getOrderId())
-            .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado"));
+            .orElseThrow(() -> new ResourceNotFoundException(ORDER_NOT_FOUND));
         Payment payment = paymentRepository.findByTenantIdAndIdForUpdate(tenantId, paymentId)
-            .orElseThrow(() -> new ResourceNotFoundException("Pago no encontrado"));
+            .orElseThrow(() -> new ResourceNotFoundException(PAYMENT_NOT_FOUND));
 
         validateReviewable(payment, order);
         payment.setStatus(PaymentStatus.FAILED);
@@ -153,7 +177,82 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setRejectionReason(request.reason().trim());
         order.setPaymentStatus(OrderPaymentStatus.FAILED);
         orderRepository.save(order);
+        auditService.record(
+            "PAYMENT_REJECTED",
+            "Payment",
+            paymentId,
+            "MANUAL_REVIEW",
+            "FAILED: " + payment.getRejectionReason()
+        );
         return PaymentMapper.toResponse(paymentRepository.save(payment));
+    }
+
+    @Override
+    @Transactional
+    public void applyWebhookPayment(PaymentWebhookRequest request) {
+        if (!APPROVED_WEBHOOK_STATUSES.contains(request.status().trim().toUpperCase())) {
+            log.info(
+                "PAYMENT WEBHOOK: estado {} ignorado para el pedido {}",
+                request.status(),
+                request.orderId()
+            );
+            return;
+        }
+
+        CustomerOrder order = orderRepository.findById(request.orderId())
+            .orElseThrow(() -> new ResourceNotFoundException(ORDER_NOT_FOUND));
+        UUID tenantId = order.getTenantId();
+        String provider = request.provider().trim().toUpperCase();
+        String operationCode = request.externalTransactionId().trim();
+
+        if (paymentRepository.existsByTenantIdAndProviderIgnoreCaseAndOperationCodeIgnoreCase(
+            tenantId,
+            provider,
+            operationCode
+        )) {
+            log.info("PAYMENT WEBHOOK: transaccion {} ya procesada, se ignora el reenvio", operationCode);
+            return;
+        }
+        if (order.getPaymentStatus() == OrderPaymentStatus.PAID) {
+            log.info("PAYMENT WEBHOOK: el pedido {} ya estaba pagado, se ignora el evento", order.getId());
+            return;
+        }
+        validatePayable(order);
+
+        LocalDateTime now = LocalDateTime.now();
+        Payment payment = paymentRepository
+            .findFirstByTenantIdAndOrderIdAndStatusInOrderByCreatedAtDesc(tenantId, order.getId(), OPEN_PAYMENT_STATUSES)
+            .orElseGet(() -> {
+                Payment created = new Payment();
+                created.setTenantId(tenantId);
+                created.setOrderId(order.getId());
+                created.setMethod(request.method() != null ? request.method() : PaymentMethod.BANK_TRANSFER);
+                created.setAmount(order.getTotal());
+                return created;
+            });
+
+        payment.setProvider(provider);
+        payment.setOperationCode(operationCode);
+        payment.setExternalPaymentId(operationCode);
+        payment.setStatus(PaymentStatus.PAID);
+        payment.setPaidAt(now);
+        payment.setReviewedAt(now);
+        payment.setRejectionReason(null);
+        paymentRepository.save(payment);
+
+        order.setPaymentStatus(OrderPaymentStatus.PAID);
+        order.setOrderStatus(OrderStatus.PAID);
+        orderRepository.save(order);
+        addHistory(tenantId, order.getId(), OrderStatus.PAID, null, "Pago confirmado por webhook de " + provider);
+
+        auditService.record(
+            "PAYMENT_WEBHOOK_APPROVED",
+            "Payment",
+            payment.getId(),
+            null,
+            provider + " confirmo la transaccion " + operationCode
+        );
+        log.info("PAYMENT WEBHOOK: pedido {} marcado como pagado por {}", order.getId(), provider);
     }
 
     private void validatePayable(CustomerOrder order) {
@@ -204,13 +303,13 @@ public class PaymentServiceImpl implements PaymentService {
         };
     }
 
-    private void addPaidHistory(UUID tenantId, UUID orderId, UUID reviewerId) {
+    private void addHistory(UUID tenantId, UUID orderId, OrderStatus status, UUID changedBy, String notes) {
         OrderStatusHistory history = new OrderStatusHistory();
         history.setTenantId(tenantId);
         history.setOrderId(orderId);
-        history.setStatus(OrderStatus.PAID);
-        history.setChangedBy(reviewerId);
-        history.setNotes("Pago confirmado");
+        history.setStatus(status);
+        history.setChangedBy(changedBy);
+        history.setNotes(notes);
         historyRepository.save(history);
     }
 

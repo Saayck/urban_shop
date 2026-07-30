@@ -54,23 +54,23 @@ class ComplaintIntegrationTest {
         ComplaintResponse inReview = complaintService.updateStatus(
             tenant.getId(),
             created.id(),
-            new ComplaintStatusUpdateRequest(ComplaintStatus.IN_REVIEW)
+            new ComplaintStatusUpdateRequest(ComplaintStatus.IN_REVIEW, null)
         );
         assertThat(inReview.status()).isEqualTo(ComplaintStatus.IN_REVIEW);
 
         complaintService.updateStatus(tenant.getId(), created.id(),
-            new ComplaintStatusUpdateRequest(ComplaintStatus.ANSWERED));
+            new ComplaintStatusUpdateRequest(ComplaintStatus.ANSWERED, "Se atendio el reclamo"));
         ComplaintResponse closed = complaintService.updateStatus(
             tenant.getId(),
             created.id(),
-            new ComplaintStatusUpdateRequest(ComplaintStatus.CLOSED)
+            new ComplaintStatusUpdateRequest(ComplaintStatus.CLOSED, null)
         );
         assertThat(closed.status()).isEqualTo(ComplaintStatus.CLOSED);
 
         assertThatThrownBy(() -> complaintService.updateStatus(
             tenant.getId(),
             created.id(),
-            new ComplaintStatusUpdateRequest(ComplaintStatus.OPEN)
+            new ComplaintStatusUpdateRequest(ComplaintStatus.OPEN, null)
         )).isInstanceOf(BusinessException.class)
             .hasMessageContaining("cerrado");
     }
@@ -108,7 +108,7 @@ class ComplaintIntegrationTest {
                 ComplaintType.QUEJA, "Segunda queja", null));
 
         complaintService.updateStatus(tenant.getId(), second.id(),
-            new ComplaintStatusUpdateRequest(ComplaintStatus.IN_REVIEW));
+            new ComplaintStatusUpdateRequest(ComplaintStatus.IN_REVIEW, null));
 
         assertThat(complaintService.listAdmin(tenant.getId(), null, 0, 20).totalElements())
             .isEqualTo(2);

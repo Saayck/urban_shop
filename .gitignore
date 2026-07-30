@@ -1,0 +1,16 @@
+# Variables de entorno: nunca se versionan, solo la plantilla .env.example
+.env
+.env.*
+!.env.example
+
+# Archivos subidos en desarrollo
+uploads/
+
+### IDE ###
+.idea/
+.vscode/
+*.iml
+
+### SO ###
+Thumbs.db
+.DS_Store

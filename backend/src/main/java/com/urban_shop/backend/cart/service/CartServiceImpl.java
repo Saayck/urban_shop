@@ -110,6 +110,19 @@ public class CartServiceImpl implements CartService {
         return buildResponse(tenantId, cart);
     }
 
+    @Override
+    @Transactional
+    public CartResponse clear(UUID tenantId, UUID customerId) {
+        Cart cart = requireActiveCart(tenantId, customerId);
+        List<CartItem> items = itemRepository.findAllByCartIdOrderByCreatedAtAsc(cart.getId());
+        if (!items.isEmpty()) {
+            itemRepository.deleteAll(items);
+            itemRepository.flush();
+            touch(cart);
+        }
+        return buildResponse(tenantId, cart);
+    }
+
     private Cart requireActiveCart(UUID tenantId, UUID customerId) {
         Customer customer = customerRepository.findByTenantIdAndIdForUpdate(tenantId, customerId)
             .orElseThrow(() -> new ResourceNotFoundException("Cliente no encontrado"));

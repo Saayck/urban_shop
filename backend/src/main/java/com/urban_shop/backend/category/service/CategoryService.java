@@ -18,4 +18,7 @@ public interface CategoryService {
     CategoryResponse get(UUID tenantId, UUID categoryId);
 
     CategoryResponse update(UUID tenantId, UUID categoryId, CategoryUpdateRequest request);
+
+    /** Elimina la categoria. Falla si tiene subcategorias o productos asociados. */
+    void delete(UUID tenantId, UUID categoryId);
 }

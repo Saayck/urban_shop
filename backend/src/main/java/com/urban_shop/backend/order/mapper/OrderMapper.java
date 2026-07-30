@@ -44,6 +44,7 @@ public final class OrderMapper {
             order.getSubtotal(),
             order.getShippingCost(),
             order.getDiscountTotal(),
+            order.getCouponCode(),
             order.getTotal(),
             order.getPaymentStatus(),
             order.getOrderStatus(),

@@ -1,0 +1,26 @@
+package com.urban_shop.backend.coupon.dto.response;
+
+import com.urban_shop.backend.coupon.entity.DiscountType;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+public record CouponResponse(
+    UUID id,
+    String code,
+    String description,
+    DiscountType discountType,
+    BigDecimal discountValue,
+    BigDecimal maxDiscountAmount,
+    BigDecimal minPurchaseAmount,
+    LocalDateTime validFrom,
+    LocalDateTime validUntil,
+    Integer usageLimit,
+    int usedCount,
+    int perCustomerLimit,
+    boolean active,
+    LocalDateTime createdAt,
+    LocalDateTime updatedAt
+) {
+}

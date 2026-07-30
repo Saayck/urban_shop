@@ -16,6 +16,7 @@ import com.urban_shop.backend.product.dto.response.ProductVariantResponse;
 import com.urban_shop.backend.product.dto.response.SizeGuideResponse;
 import com.urban_shop.backend.product.entity.ProductStatus;
 import com.urban_shop.backend.product.service.ProductService;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -93,6 +94,18 @@ public class AdminProductController {
         return productService.updateStatus(currentTenant.requireId(), id, request.status());
     }
 
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
+    @Operation(
+        summary = "Eliminar un producto",
+        description = "Elimina el producto con sus imagenes, variantes y guias de tallas. "
+            + "Si ya tiene pedidos asociados no se puede borrar: hay que cambiar su estado a INACTIVE."
+    )
+    public void delete(@PathVariable UUID id) {
+        productService.delete(currentTenant.requireId(), id);
+    }
+
     @PostMapping("/{id}/images")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('TENANT_ADMIN')")
@@ -128,6 +141,17 @@ public class AdminProductController {
         @Valid @RequestBody ProductVariantUpdateRequest request
     ) {
         return productService.updateVariant(currentTenant.requireId(), id, variantId, request);
+    }
+
+    @DeleteMapping("/{id}/variants/{variantId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
+    @Operation(
+        summary = "Eliminar una variante",
+        description = "Si la variante ya figura en pedidos no se puede borrar: hay que desactivarla."
+    )
+    public void deleteVariant(@PathVariable UUID id, @PathVariable UUID variantId) {
+        productService.deleteVariant(currentTenant.requireId(), id, variantId);
     }
 
     @PostMapping("/{id}/size-guides")

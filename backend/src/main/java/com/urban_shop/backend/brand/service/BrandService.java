@@ -18,4 +18,7 @@ public interface BrandService {
     BrandResponse get(UUID tenantId, UUID brandId);
 
     BrandResponse update(UUID tenantId, UUID brandId, BrandUpdateRequest request);
+
+    /** Elimina la marca. Falla si tiene productos asociados: en ese caso hay que desactivarla. */
+    void delete(UUID tenantId, UUID brandId);
 }

@@ -14,6 +14,9 @@ public record OrderCreateRequest(
     InvoiceType invoiceType,
     @Pattern(regexp = "^(DNI|CE|PASSPORT|RUC)$", message = "documentType no valido")
     String documentType,
-    @Size(max = 20) String documentNumber
+    @Size(max = 20) String documentNumber,
+
+    /** Codigo de cupon opcional; si no aplica, el pedido se rechaza con el motivo. */
+    @Size(max = 50) String couponCode
 ) {
 }

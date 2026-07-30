@@ -354,7 +354,8 @@ class OrderPaymentIntegrationTest {
             addressId,
             InvoiceType.BOLETA,
             "DNI",
-            "12345678"
+            "12345678",
+            null
         );
     }
 

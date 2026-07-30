@@ -1,6 +1,8 @@
 package com.urban_shop.backend.product.repository;
 
+import com.urban_shop.backend.product.entity.Product;
 import com.urban_shop.backend.product.entity.ProductVariant;
+import com.urban_shop.backend.report.dto.LowStockResponse;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -17,6 +19,29 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     List<ProductVariant> findAllByProductIdOrderBySizeAscColorAsc(UUID productId);
 
     List<ProductVariant> findAllByProductIdIn(Collection<UUID> productIds);
+
+    /** Variantes activas por debajo del umbral de stock, para alertas de reposicion. */
+    @Query("""
+        select new com.urban_shop.backend.report.dto.LowStockResponse(
+            product.id,
+            product.name,
+            variant.id,
+            variant.sku,
+            variant.size,
+            variant.color,
+            variant.stock
+        )
+        from ProductVariant variant, Product product
+        where variant.productId = product.id
+          and product.tenantId = :tenantId
+          and variant.active = true
+          and variant.stock <= :threshold
+        order by variant.stock asc, product.name asc
+        """)
+    List<LowStockResponse> findLowStock(
+        @Param("tenantId") UUID tenantId,
+        @Param("threshold") int threshold
+    );
 
     boolean existsByProductIdAndSizeIgnoreCaseAndColorIgnoreCase(UUID productId, String size, String color);
 
