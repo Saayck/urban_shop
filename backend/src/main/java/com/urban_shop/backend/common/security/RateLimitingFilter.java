@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -24,13 +25,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Limita por IP los endpoints publicos susceptibles de abuso: intentos de credenciales,
  * altas de cuenta, recuperacion de contrasena y el libro de reclamaciones anonimo.
+ * <p>
+ * <strong>El contador vive en memoria de cada instancia.</strong> Con N replicas el limite
+ * efectivo es N x {@code app.rate-limit.requests-per-minute}. Ajusta la propiedad dividiendo
+ * por el numero de replicas, o mueve el contador a Redis si necesitas un limite global exacto.
  */
 @Component
 @Slf4j
 @RequiredArgsConstructor
 public class RateLimitingFilter extends OncePerRequestFilter {
 
-    private static final int MAX_REQUESTS_PER_WINDOW = 15;
     private static final long WINDOW_SIZE_MILLIS = 60_000;
 
     /** Cada cuantas peticiones se purgan las ventanas caducadas para que el mapa no crezca sin limite. */
@@ -46,6 +50,10 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     );
 
     private final ObjectMapper objectMapper;
+
+    @Value("${app.rate-limit.requests-per-minute:15}")
+    private int maxRequestsPerWindow;
+
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
     private final Map<String, RequestBucket> ipBuckets = new ConcurrentHashMap<>();
     private final AtomicInteger requestsSinceCleanup = new AtomicInteger();
@@ -83,7 +91,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
         purgeStaleBucketsPeriodically(now);
 
-        if (bucket.requestCount.get() > MAX_REQUESTS_PER_WINDOW) {
+        if (bucket.requestCount.get() > maxRequestsPerWindow) {
             log.warn("Rate limit exceeded for IP: {} on endpoint: {}", clientIp, request.getRequestURI());
 
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());

@@ -34,28 +34,40 @@ public class AuditServiceImpl implements AuditService {
 
     private final AuditLogRepository auditLogRepository;
 
+    /**
+     * Se une a la transaccion de negocio en curso, no abre una nueva.
+     * <p>
+     * Con {@code REQUIRES_NEW} cada escritura auditada retenia dos conexiones a la vez
+     * (la suspendida y la nueva), lo que agota el pool bajo concurrencia. Ademas, unirse
+     * a la transaccion es lo correcto: un apunte de auditoria de una operacion que despues
+     * hizo rollback seria un registro falso.
+     */
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.REQUIRED)
     public void record(String action, String entityName, UUID entityId, String oldValue, String newValue) {
-        try {
-            AuditLog entry = new AuditLog();
-            entry.setTenantId(TenantContext.getTenantId());
-            entry.setUserId(currentInternalUserId());
-            entry.setAction(action);
-            entry.setEntityName(entityName);
-            entry.setEntityId(entityId);
-            entry.setOldValue(truncate(oldValue));
-            entry.setNewValue(truncate(newValue));
+        AuditLog entry = new AuditLog();
+        entry.setTenantId(TenantContext.getTenantId());
+        entry.setAction(action);
+        entry.setEntityName(entityName);
+        entry.setEntityId(entityId);
+        entry.setOldValue(truncate(oldValue));
+        entry.setNewValue(truncate(newValue));
+        // Los metadatos son accesorios: si no se pueden obtener, se audita igual.
+        applyRequestMetadata(entry, action);
+        auditLogRepository.save(entry);
+    }
 
+    private void applyRequestMetadata(AuditLog entry, String action) {
+        try {
+            entry.setUserId(currentInternalUserId());
             HttpServletRequest request = currentRequest();
             if (request != null) {
                 entry.setIpAddress(clientIp(request));
                 entry.setUserAgent(truncate(request.getHeader("User-Agent")));
             }
-            auditLogRepository.save(entry);
         } catch (RuntimeException ex) {
-            // La auditoria no debe tumbar la operacion de negocio.
-            log.error("No se pudo registrar la auditoria de la accion {}", action, ex);
+            // Nunca toca la base de datos, asi que no puede marcar la transaccion para rollback.
+            log.warn("No se pudieron obtener los metadatos de auditoria de la accion {}", action, ex);
         }
     }
 

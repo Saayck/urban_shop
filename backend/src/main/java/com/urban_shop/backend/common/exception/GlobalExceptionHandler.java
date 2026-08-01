@@ -4,7 +4,9 @@ import com.urban_shop.backend.common.response.ApiError;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
@@ -27,6 +29,38 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException ex, HttpServletRequest req) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(ApiError.of(HttpStatus.NOT_FOUND, ex.getMessage(), req.getRequestURI()));
+    }
+
+    /** Sin esto, superar el limite de subida se traducia en un 500 opaco. */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiError> handleUploadTooLarge(
+        MaxUploadSizeExceededException ex,
+        HttpServletRequest req
+    ) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+            .body(ApiError.of(
+                HttpStatus.PAYLOAD_TOO_LARGE,
+                "El archivo supera el tamano maximo permitido",
+                req.getRequestURI()
+            ));
+    }
+
+    /**
+     * Una edicion concurrente perdio la carrera: el registro cambio entre la lectura
+     * y el guardado. El cliente debe recargar y reintentar.
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiError> handleOptimisticLock(
+        ObjectOptimisticLockingFailureException ex,
+        HttpServletRequest req
+    ) {
+        log.warn("Conflicto de edicion concurrente en {}", req.getRequestURI());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiError.of(
+                HttpStatus.CONFLICT,
+                "El registro fue modificado por otra operacion. Recargue e intente de nuevo.",
+                req.getRequestURI()
+            ));
     }
 
     @ExceptionHandler(BusinessException.class)

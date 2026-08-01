@@ -7,6 +7,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -38,4 +39,9 @@ public class Tenant extends BaseEntity {
 
     @Column(name = "plan_name", nullable = false, length = 50)
     private String planName = "BASIC";
+
+    /** Bloqueo optimista: dos ediciones concurrentes ya no se pisan en silencio. */
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
 }

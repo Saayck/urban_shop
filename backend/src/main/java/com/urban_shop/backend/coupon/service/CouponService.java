@@ -1,5 +1,6 @@
 package com.urban_shop.backend.coupon.service;
 
+import com.urban_shop.backend.common.response.PageResponse;
 import com.urban_shop.backend.coupon.dto.request.CouponCreateRequest;
 import com.urban_shop.backend.coupon.dto.request.CouponUpdateRequest;
 import com.urban_shop.backend.coupon.dto.response.CouponPreviewResponse;
@@ -14,7 +15,11 @@ public interface CouponService {
 
     CouponResponse create(UUID tenantId, CouponCreateRequest request);
 
-    List<CouponResponse> list(UUID tenantId);
+    /**
+     * Paginado a proposito: los cupones se acumulan campana tras campana y una tienda
+     * con historia puede tener miles.
+     */
+    PageResponse<CouponResponse> list(UUID tenantId, Boolean active, int page, int size);
 
     CouponResponse get(UUID tenantId, UUID couponId);
 

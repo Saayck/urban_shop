@@ -2,6 +2,7 @@ package com.urban_shop.backend.coupon.service;
 
 import com.urban_shop.backend.common.exception.BusinessException;
 import com.urban_shop.backend.common.exception.ResourceNotFoundException;
+import com.urban_shop.backend.common.response.PageResponse;
 import com.urban_shop.backend.coupon.dto.request.CouponCreateRequest;
 import com.urban_shop.backend.coupon.dto.request.CouponUpdateRequest;
 import com.urban_shop.backend.coupon.dto.response.CouponPreviewResponse;
@@ -14,6 +15,8 @@ import com.urban_shop.backend.coupon.repository.CouponRedemptionRepository;
 import com.urban_shop.backend.coupon.repository.CouponRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -66,10 +69,14 @@ public class CouponServiceImpl implements CouponService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CouponResponse> list(UUID tenantId) {
-        return couponRepository.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
-            .map(CouponMapper::toResponse)
-            .toList();
+    public PageResponse<CouponResponse> list(UUID tenantId, Boolean active, int page, int size) {
+        return PageResponse.from(
+            couponRepository.findAdmin(
+                tenantId,
+                active,
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))
+            ).map(CouponMapper::toResponse)
+        );
     }
 
     @Override

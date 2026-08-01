@@ -1,5 +1,6 @@
 package com.urban_shop.backend.coupon.controller;
 
+import com.urban_shop.backend.common.response.PageResponse;
 import com.urban_shop.backend.common.tenant.CurrentTenant;
 import com.urban_shop.backend.coupon.dto.request.CouponCreateRequest;
 import com.urban_shop.backend.coupon.dto.request.CouponUpdateRequest;
@@ -8,9 +9,13 @@ import com.urban_shop.backend.coupon.service.CouponService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,6 +33,7 @@ import java.util.UUID;
 @RequestMapping("/api/admin/coupons")
 @Tag(name = "Admin Coupons", description = "Cupones de descuento de la tienda")
 @RequiredArgsConstructor
+@Validated
 public class AdminCouponController {
 
     private final CouponService couponService;
@@ -47,9 +53,13 @@ public class AdminCouponController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('TENANT_ADMIN', 'SALES_STAFF')")
-    @Operation(summary = "Listar los cupones de la tienda")
-    public List<CouponResponse> list() {
-        return couponService.list(currentTenant.requireId());
+    @Operation(summary = "Listar los cupones de la tienda", description = "Filtra opcionalmente por estado.")
+    public PageResponse<CouponResponse> list(
+        @RequestParam(required = false) Boolean active,
+        @RequestParam(defaultValue = "0") @Min(0) int page,
+        @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
+    ) {
+        return couponService.list(currentTenant.requireId(), active, page, size);
     }
 
     @GetMapping("/{id}")

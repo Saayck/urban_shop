@@ -1,6 +1,11 @@
 server:
   port: 8080
 
+logging:
+  pattern:
+    # [correlationId] permite seguir todas las lineas de una misma peticion.
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{correlationId:-}] %logger{36} - %msg%n"
+
 spring:
   application:
     name: urban-shop-backend
@@ -10,6 +15,15 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      # Falla rapido en vez de dejar la peticion colgada esperando conexion.
+      connection-timeout: 10000
+      max-lifetime: 1800000
+      idle-timeout: 600000
+      # Avisa en el log de transacciones que retienen la conexion demasiado tiempo.
+      leak-detection-threshold: ${DB_LEAK_DETECTION_MS:20000}
 
   jpa:
     hibernate:
@@ -53,6 +67,18 @@ app:
   mail:
     enabled: ${MAIL_ENABLED:false}
 
+  cache:
+    # Caduca por escritura: acota la ventana de datos obsoletos si se despliegan
+    # varias instancias, porque @CacheEvict solo limpia la JVM local.
+    ttl-seconds: ${CACHE_TTL_SECONDS:120}
+    max-entries: ${CACHE_MAX_ENTRIES:2000}
+
+  rate-limit:
+    # OJO: el contador vive en memoria de cada instancia. Con N replicas el limite
+    # efectivo es N x requests-per-minute. Ajustalo dividiendo por el numero de replicas,
+    # o muevelo a Redis si necesitas un limite global exacto.
+    requests-per-minute: ${RATE_LIMIT_RPM:15}
+
   storage:
     location: ${STORAGE_LOCATION:uploads}
 
@@ -77,7 +103,9 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, info
+        # prometheus queda fuera del acceso publico (ver SecurityConfig): solo health e info
+        # son anonimos; metrics y prometheus exigen rol SUPER_ADMIN.
+        include: health, info, metrics, prometheus
   endpoint:
     health:
       show-details: never

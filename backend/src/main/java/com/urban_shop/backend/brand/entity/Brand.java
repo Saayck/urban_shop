@@ -7,6 +7,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -36,4 +37,9 @@ public class Brand extends TenantScopedEntity {
 
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
+
+    /** Bloqueo optimista: dos ediciones concurrentes ya no se pisan en silencio. */
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
 }

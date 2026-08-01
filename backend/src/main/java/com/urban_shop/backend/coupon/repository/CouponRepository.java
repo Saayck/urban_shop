@@ -2,6 +2,8 @@ package com.urban_shop.backend.coupon.repository;
 
 import com.urban_shop.backend.coupon.entity.Coupon;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -13,7 +15,16 @@ import java.util.UUID;
 
 public interface CouponRepository extends JpaRepository<Coupon, UUID> {
 
-    List<Coupon> findAllByTenantIdOrderByCreatedAtDesc(UUID tenantId);
+    @Query("""
+        select coupon from Coupon coupon
+        where coupon.tenantId = :tenantId
+          and (:active is null or coupon.active = :active)
+        """)
+    Page<Coupon> findAdmin(
+        @Param("tenantId") UUID tenantId,
+        @Param("active") Boolean active,
+        Pageable pageable
+    );
 
     Optional<Coupon> findByTenantIdAndId(UUID tenantId, UUID id);
 

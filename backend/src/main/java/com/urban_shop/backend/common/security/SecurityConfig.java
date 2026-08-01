@@ -102,6 +102,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/payments/webhook").permitAll()
                 .requestMatchers("/uploads/**").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+                // Las metricas revelan volumen de negocio: nunca publicas.
+                .requestMatchers("/actuator/**").hasRole("SUPER_ADMIN")
                 .requestMatchers(
                     "/swagger-ui.html",
                     "/swagger-ui/**",

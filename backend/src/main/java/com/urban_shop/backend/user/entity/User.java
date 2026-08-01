@@ -11,6 +11,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -64,4 +65,9 @@ public class User extends BaseEntity {
         inverseJoinColumns = @JoinColumn(name = "role_id")
     )
     private Set<Role> roles = new HashSet<>();
+
+    /** Bloqueo optimista: dos ediciones concurrentes ya no se pisan en silencio. */
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
 }
